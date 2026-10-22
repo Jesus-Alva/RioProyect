@@ -1,6 +1,6 @@
 # Distribuidora Río Claro
 
-## Definición y analisis del Proyecto
+## 1. Definición y analisis del Proyecto
 
 Toda la información presentada es ficticia, para dar cumplimiento al *proyecto Fase 2*
 
@@ -18,17 +18,15 @@ Río Claro es una distribuidora familiar de productos de limpieza e higiene con 
 - Procesos manuales sin controles automáticos (validación de facturas, conciliación, triage de solicitudes).
 - Falta de una capa de conocimiento estructurado (RAG, base vectorial, ontologías) que la IA necesita para responder con precisión.
 
+### Roles identificados: 
+- Rol: Directivo / Administrador General (Ernesto)
+- Rol: Analista / Operador de Cuentas por Pagar  (Laura)
+- Rol: Gerente de Sucursal / Atención al Cliente (Mariana)
+- Rol: Operador de Bodega / Almacén (Toño)
+- Rol: Administrador de TI / Soporte Técnico (Carlos)
+
 ### Solucion Propúesta
 Creacion de un sistema web que se encarge de automatizar procesos mediante ayuda de una IA que consuma informacion centralizada de los clientes y las distintas sucursales.
-
-
-### Roles identificados: 
-- El Rol Directivo (Ernesto)
-- El Rol Operativo Financiero (Laura)
-- El Rol Operativo de Atención al Cliente (Mariana)
-- El Rol de Usuario en Campo (Toño)
-- Soporte y sistemas
-- El Rol Técnico (Carlos)
 
 ### Puntos clave: 
 - Presupuesto limitado: la dirección aprueba un piloto pequeño; hay que justificar cada servicio que se cree.
@@ -39,6 +37,28 @@ datos se ordenan mientras la empresa sigue vendiendo.
 - Confianza: Laura y los gerentes temen que la IA “los reemplace” o que invente cifras; se
 debe mostrar que la IA apoya y que siempre hay una persona que revisa.
 
+## 2. Modulos preevistos del sistema
+> EL sistema debe de contar con los siguientes modulos
+### Modulo Directivos:
+#### Funciones esperadas:
+1. Generar Reporte de ventas para la direccion por producto
+2. Filtrado de informacion del reporte por sucursal
+3. Gestion de sucursales (Guadalajara, Zapopan, León, Querétaro y Aguascalientes)
+
+### Modulo Analista
+1. Extraer la informacion (proveedor, fecha y total) de los proveedores de las facturas
+
+### Modulo Gerente de Sucursal
+Lectura de archivos para extraccion de informacion mediante IA (Punto 3 apartado 1)
+
+### Modulo Operador de Bodega
+
+### LO que debe de incluir el modelo de IA
+[]Uso desde el celular o por voz
+
+## 3. Intervencion de IA
+Centralizar la informacion dentro de One Drive para que FOundry IQ pueda acceder a las facturas
+ 
 ## Evidencia
 
 ![Inicio de documentacion para evidencia](evidencia-img/evidencia-analisis01.png)

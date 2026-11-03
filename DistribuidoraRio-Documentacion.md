@@ -56,8 +56,18 @@ Lectura de archivos para extraccion de informacion mediante IA (Punto 3 apartado
 ### LO que debe de incluir el modelo de IA
 []Uso desde el celular o por voz
 
-## 3. Intervencion de IA
-Centralizar la informacion dentro de One Drive para que FOundry IQ pueda acceder a las facturas
+## 3. Implementacion
+
+### 3.1 Capa de datos
+Uno de los problemas con los que se tiene que lidiar antes de generar cualquier sistema y poner a los AGENTES a consumir datos, es la falta de organizacion de la informacion, pues cito "El reto no es solo *conectar un modelo*: primero tienen que entender por qué la empresa no está lista, ordenar lo indispensable y después construir", Por lo que, como en la problematica identificada se indica, los datos/inbformacion estan dispersos. 
+Para solventar este punto se propone lo siguiente:
+|#|Desorden Identificado|Acción mínima antes de conectar la IA|Servicio Azure que lo resuelve|
+|-|-|-|-|
+|1|Facturas en PDF y fotos de WhatsApp, sin carpeta estándar|Crear un contenedor de ingesta único en Blob Storage los compradores suben ahí (o reenvían a una dirección).| Azure Blob Storage|
+|2|“Cloro 1L”, “CLORO LITRO” y “Blanqueador 1000ml” son el mismo producto|Definir un catálogo maestro de productos (una tabla con clave única y sinónimos). El agente consulta esa tabla, no los Excels de sucursal.|	Azure SQL / tabla en Blob + índice en AI Search|
+|3|Tres versiones de la política de devoluciones|Elegir una versión vigente, marcarla como “aprobada por dirección” y subirla como fuente de conocimiento del agente.|Azure AI Search (índice de conocimiento)|
+|4|Contraseña compartida; nóminas y precios visibles para todos|No conectar datos sensibles al modelo. El agente solo accede a lo que necesita por rol. |Microsoft Entra ID + Key Vault|
+|5|Quejas sin historial central|Un formulario/buzón simple que registre texto y sucursal; luego el agente puede analizar sentimiento y temas.|Blob Storage + Language Service (opcional)|
  
 ## Evidencia
 

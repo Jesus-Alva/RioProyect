@@ -71,4 +71,43 @@ Para solventar este punto se propone lo siguiente:
  
 ## Evidencia
 
+Links directos a los servicios creados
+
+#### 1.- Grupo de Recursos (El contenedor principal)
+
+- Enlace: [Ver Grupo de Recursos](https://portal.azure.com/#resource/subscriptions/8a105d2e-7fed-45bc-bb81-83c1cd12488b/resourceGroups/rg-rioclaro-data-piloto/overview)
+
+Qué revisar: Aquí deberías ver la lista de todos los recursos que creamos (Storage, Search, Foundry, etc.).
+
+#### 2.- Blob Storage (Almacén de facturas)
+- Enlace: [Ver Cuenta de Almacenamiento](https://portal.azure.com/#resource/subscriptions/8a105d2e-7fed-45bc-bb81-83c1cd12488b/resourceGroups/rg-rioclaro-data-piloto/providers/Microsoft.Storage/storageAccounts/strioclarofacturas/overview)
+
+Qué revisar: En el menú de la izquierda, busca la sección "Contenedores" (Data storage > Containers). Ahí debe aparecer el contenedor llamado facturas-raw.
+
+#### 3.- Document Intelligence (Extractor de facturas)
+- Enlace: [Ver Document Intelligence](https://portal.azure.com/#resource/subscriptions/8a105d2e-7fed-45bc-bb81-83c1cd12488b/resourceGroups/rg-rioclaro-data-piloto/providers/Microsoft.CognitiveServices/accounts/di-rioclaro-facturas/overview)
+
+Qué revisar: En el menú izquierdo, ve a "Keys and Endpoint". Ahí encontrarás el Endpoint (https://di-rioclaro-facturas.cognitiveservices.azure.com/) que usamos en las variables de entorno.
+
+(Opcional) Puedes ir a "Document Intelligence Studio" en el menú superior para probar subir un PDF de prueba visualmente.
+
+#### 4.- Azure AI Search (El índice seguro)
+- Enlace: [Ver Azure AI Search](https://portal.azure.com/#resource/subscriptions/8a105d2e-7fed-45bc-bb81-83c1cd12488b/resourceGroups/rg-rioclaro-data-piloto/providers/Microsoft.Search/searchServices/srch-rioclaro/overview)
+
+Qué revisar: En el menú izquierdo, busca "Índices" (Indexes). Si el script de Python corrió bien, deberías ver el índice rioclaro-index con su campo security_id.
+
+#### 5.- Microsoft Foundry (El cerebro de la IA)
+- Enlace: [Ver Recurso de Foundry](https://portal.azure.com/#resource/subscriptions/8a105d2e-7fed-45bc-bb81-83c1cd12488b/resourceGroups/rg-rioclaro-data-piloto/providers/Microsoft.CognitiveServices/accounts/foundry-rioclaro-575/overview)
+
+Qué revisar: En la parte superior, busca el botón "Go to Foundry portal" (Ir al portal de Foundry). Eso te abrirá la interfaz donde crearemos a los agentes en la Fase 2.
+
+(Nota: El nombre del recurso es foundry-rioclaro-575 por el conflicto de nombre que resolvimos).
+
+#### 6. Key Vault (Bóveda de secretos)
+Enlace: [Ver Key Vault](https://portal.azure.com/#resource/subscriptions/8a105d2e-7fed-45bc-bb81-83c1cd12488b/resourceGroups/rg-rioclaro-data-piloto/providers/Microsoft.KeyVault/vaults/kv-rioclaro-piloto/overview)
+
+Qué revisar: Aquí guardaremos las llaves en el futuro. Por ahora puedes ver que el servicio está activo.
+
+
+
 ![Inicio de documentacion para evidencia](evidencia-img/evidencia-analisis01.png)

@@ -1,0 +1,2 @@
+# Equivalencias de nombres de producto normalizadas a la clave del catálogo.
+cloro 1l, cloro litro, blanqueador 1000ml => cloro_litro

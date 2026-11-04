@@ -1,0 +1,8 @@
+azure-ai-documentintelligence>=1,<2
+azure-ai-projects>=2,<3
+azure-identity>=1.15,<2
+azure-search-documents>=12,<13
+fastapi>=0.115,<1
+PyJWT[crypto]>=2.8,<3
+python-dotenv>=1,<2
+uvicorn[standard]>=0.30,<1

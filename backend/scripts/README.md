@@ -4,6 +4,24 @@ Los scripts usan `DefaultAzureCredential`; no configures API keys en el código.
 Antes de ejecutar, inicia sesión con una identidad autorizada para Document
 Intelligence y Azure AI Search.
 
+## Preparar el entorno Python
+
+Desde la raíz del repositorio, crea y activa un entorno virtual e instala las
+dependencias del backend:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r backend\requirements.txt
+```
+
+Ejecuta los scripts con ese entorno activo. Si no quieres activarlo, invoca
+explícitamente `.\.venv\Scripts\python.exe`; por ejemplo:
+
+```powershell
+.\.venv\Scripts\python.exe backend\scripts\create_agents.py
+```
+
 ## Variables de entorno
 
 | Variable | Uso | Valor predeterminado |

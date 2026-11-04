@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Factura Comercial</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 40px; color: #333; background: #fff; }
+        .invoice-box { max-width: 800px; margin: auto; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0, 0, 0, 0.15); padding: 10px; }
+        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0056b3; padding-bottom: 20px; margin-bottom: 20px; }
+        .logo h1 { margin: 0; color: #0056b3; font-size: 24px; }
+        .logo p { margin: 5px 0; font-size: 14px; color: #666; }
+        .invoice-details { text-align: right; }
+        .invoice-details h2 { margin: 0; color: #333; font-size: 28px; text-transform: uppercase; letter-spacing: 2px; }
+        .invoice-details p { margin: 5px 0; font-size: 14px; }
+        .client-info { display: flex; justify-content: space-between; margin-bottom: 30px; }
+        .client-info div { font-size: 14px; line-height: 1.6; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th { background-color: #0056b3; color: white; padding: 12px; text-align: left; font-size: 14px; }
+        td { padding: 12px; border-bottom: 1px solid #eee; font-size: 14px; }
+        .totals { width: 300px; float: right; }
+        .totals table { margin-bottom: 0; }
+        .totals td { border: none; padding: 5px 12px; }
+        .totals .total-row { font-weight: bold; font-size: 18px; color: #0056b3; border-top: 2px solid #0056b3; }
+        .footer { clear: both; margin-top: 50px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="invoice-box">
+        <div class="header">
+            <div class="logo">
+                <h1>Químicos y Limpiadores Industriales de Occidente, S.A. de C.V.</h1>
+                <p>RFC: QLI980512XYZ</p>
+                <p>Av. Central 4500, Parque Industrial, Guadalajara, Jal.</p>
+                <p>Tel: (33) 1234-5678 | contacto@quimicosoccidente.mx</p>
+            </div>
+            <div class="invoice-details">
+                <h2>Factura</h2>
+                <p><strong>No. Factura:</strong> FAC-2026-8472</p>
+                <p><strong>Fecha de Emisión:</strong> 03/11/2026</p>
+                <p><strong>Fecha de Vencimiento:</strong> 03/12/2026</p>
+                <p><strong>Condiciones:</strong> Crédito 30 días</p>
+            </div>
+        </div>
+
+        <div class="client-info">
+            <div>
+                <strong>FACTURAR A:</strong><br>
+                Distribuidora Río Claro<br>
+                Sucursal Guadalajara<br>
+                RFC: DRC010203ABC<br>
+                Av. Vallarta 1200, Guadalajara, Jal.
+            </div>
+            <div>
+                <strong>ENVIAR A:</strong><br>
+                Almacén Central Río Claro<br>
+                Atn: Toño (Jefe de Bodega)<br>
+                Carretera a Chapala Km 15<br>
+                Guadalajara, Jal.
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Clave Prod.</th>
+                    <th>Descripción</th>
+                    <th>Cant.</th>
+                    <th>Precio Unitario</th>
+                    <th>Importe</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>CL-1000</td>
+                    <td>Cloro 1L (Blanqueador concentrado)</td>
+                    <td>100</td>
+                    <td>$18.50</td>
+                    <td>$1,850.00</td>
+                </tr>
+                <tr>
+                    <td>DT-2000</td>
+                    <td>Detergente en Polvo 1kg</td>
+                    <td>50</td>
+                    <td>$35.00</td>
+                    <td>$1,750.00</td>
+                </tr>
+                <tr>
+                    <td>JL-5000</td>
+                    <td>Jabón Líquido para Manos 5L</td>
+                    <td>20</td>
+                    <td>$85.00</td>
+                    <td>$1,700.00</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="totals">
+            <table>
+                <tr>
+                    <td>Subtotal:</td>
+                    <td style="text-align: right;">$5,300.00</td>
+                </tr>
+                <tr>
+                    <td>IVA (16%):</td>
+                    <td style="text-align: right;">$848.00</td>
+                </tr>
+                <tr class="total-row">
+                    <td>Total a Pagar:</td>
+                    <td style="text-align: right;">$6,148.00 MXN</td>
+                </tr>
+            </table>
+        </div>
+        
+        <div style="clear: both;"></div>
+        
+        <div class="footer">
+            <p>Método de pago: Transferencia Electrónica (BBVA Bancomer)</p>
+            <p>CLABE: 0121 8000 1234 5678 90 | Este documento es una representación impresa de un CFDI.</p>
+        </div>
+    </div>
+</body>
+</html>

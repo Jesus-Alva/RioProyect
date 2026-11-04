@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import os
+from dotenv import load_dotenv
 import sys
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -15,6 +16,9 @@ from azure.core.exceptions import AzureError
 from azure.identity import DefaultAzureCredential
 from azure.search.documents import SearchClient
 
+load_dotenv() 
+
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INPUT_DIR = PROJECT_ROOT / "data" / "invoices"
@@ -23,7 +27,7 @@ DEFAULT_ACCESS_MANIFEST = (
 )
 DEFAULT_REVIEW_REPORT = PROJECT_ROOT / "data" / "needs_review.jsonl"
 SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
-MIN_CONFIDENCE = 0.8
+MIN_CONFIDENCE = 0.5
 
 
 def load_access_manifest(path: Path) -> dict[str, list[str]]:
@@ -53,7 +57,10 @@ def load_access_manifest(path: Path) -> dict[str, list[str]]:
 
 def field_value(document_fields: dict[str, Any], name: str) -> Any:
     field = document_fields.get(name)
-    return None if field is None else field.value
+    if field is None:
+        return None
+    currency_value = getattr(field, "value_currency", None)
+    return currency_value if currency_value is not None else field.content
 
 
 def field_confidence(document_fields: dict[str, Any], name: str) -> float | None:

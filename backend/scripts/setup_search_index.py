@@ -1,6 +1,7 @@
 """Crea o actualiza el índice seguro de facturas en Azure AI Search."""
 
 import os
+from dotenv import load_dotenv
 import sys
 
 from azure.core.exceptions import AzureError
@@ -12,6 +13,7 @@ from azure.search.documents.indexes.models import (
     SearchIndex,
 )
 
+load_dotenv() 
 
 def build_index(index_name: str, synonym_map_name: str) -> SearchIndex:
     fields = [

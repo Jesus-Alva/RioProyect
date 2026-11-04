@@ -1,6 +1,7 @@
 """Crea o actualiza el mapa de sinónimos de productos en Azure AI Search."""
 
 import os
+from dotenv import load_dotenv
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from azure.identity import DefaultAzureCredential
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import SynonymMap
 
+load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SYNONYM_FILE = PROJECT_ROOT / "backend" / "config" / "product-synonyms.txt"

@@ -134,6 +134,7 @@ def append_review_record(
 def invoice_to_search_document(
     document: Any,
     filename: str,
+    source_content: str | None,
     content_hash: str,
     document_number: int,
     role_ids: list[str],
@@ -151,13 +152,27 @@ def invoice_to_search_document(
     except (ArithmeticError, TypeError, ValueError) as error:
         return None, [f"InvoiceTotal: valor inválido ({error})"]
 
+    invoice_date = invoice_date_value(invoice_date)
+    searchable_content = "\n".join(
+        part
+        for part in (
+            f"Factura: {filename}. Facturas.",
+            f"Proveedor: {vendor_name}.",
+            f"Fecha: {invoice_date}." if invoice_date else "",
+            f"Total: {normalized_total}.",
+            source_content.strip() if source_content else "",
+        )
+        if part
+    )
+
     return (
         {
             "id": make_document_id(content_hash, document_number),
             "document_filename": filename,
             "vendor_name": str(vendor_name),
+            "invoice_content": searchable_content,
             "invoice_total": normalized_total,
-            "invoice_date": invoice_date_value(invoice_date),
+            "invoice_date": invoice_date,
             "security_id": role_ids,
             "product_names": [],
         },
@@ -260,6 +275,7 @@ def main() -> int:
                 search_document, reasons = invoice_to_search_document(
                     analyzed_document,
                     invoice_path.name,
+                    result.content,
                     content_hash,
                     document_number,
                     role_ids,

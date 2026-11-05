@@ -51,6 +51,15 @@ AGENT_NAMES = {
     "TI": "rio-ti",
 }
 
+SEARCH_INSTRUCTIONS = (
+    "Para cualquier consulta sobre facturas o datos indexados, consulta primero "
+    "Azure AI Search. Basa la respuesta únicamente en los documentos devueltos; "
+    "no afirmes que no tienes acceso a facturas si la búsqueda no se ejecutó. "
+    "Cuando estén disponibles, incluye el nombre del archivo, proveedor, fecha "
+    "y total de la factura. "
+    "Si la búsqueda no devuelve documentos, indícalo claramente y no inventes datos."
+)
+
 SEARCH_FILTER = "security_id/any(g: search.in(g, '{{userFilter}}'))"
 
 
@@ -60,7 +69,7 @@ def main() -> int:
     endpoint = os.getenv("FOUNDRY_PROJECT_ENDPOINT")
     model_name = os.getenv("FOUNDRY_MODEL_NAME", "gpt-4o")
     search_connection_id = os.getenv("AI_SEARCH_PROJECT_CONNECTION_ID")
-    index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "rio-claro-invoices")
+    index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "rioclaro-index")
     if not endpoint or not search_connection_id:
         missing = [
             name
@@ -95,7 +104,7 @@ def main() -> int:
                 for role, instructions in AGENT_INSTRUCTIONS.items():
                     definition = PromptAgentDefinition(
                         model=model_name,
-                        instructions=instructions,
+                        instructions=f"{instructions}\n\n{SEARCH_INSTRUCTIONS}",
                         tools=[search_tool],
                         structured_inputs={
                             "userFilter": StructuredInputDefinition(

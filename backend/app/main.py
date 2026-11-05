@@ -20,13 +20,13 @@ load_dotenv()
 
 app = FastAPI()
 bearer_scheme = HTTPBearer(auto_error=False)
-ALLOWED_ROLES = {"Directivo", "Analista", "Gerente", "Bodega", "TI"}
+ALLOWED_ROLES = {"directivo", "analista", "gerente", "bodega", "ti"}
 AGENT_NAMES = {
-    "Directivo": "rio-directivo",
-    "Analista": "rio-analista",
-    "Gerente": "rio-gerente",
-    "Bodega": "rio-bodega",
-    "TI": "rio-ti",
+    "directivo": "rio-directivo",
+    "analista": "rio-analista",
+    "gerente": "rio-gerente",
+    "bodega": "rio-bodega",
+    "ti": "rio-ti",
 }
 
 
@@ -65,6 +65,16 @@ def get_jwks_client(tenant_id: str) -> PyJWKClient:
 def authenticate_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any]:
+    
+    # --- INICIO DEL BYPASS PARA DESARROLLO LOCAL ---
+    if os.getenv("ENVIRONMENT", "development") == "development":
+        return {
+            # Le damos todos los roles para que puedas probar cualquiera desde Swagger
+            "roles": ["directivo", "analista", "gerente", "bodega", "ti"],
+            "oid": "usuario-de-prueba-123"
+        }
+    # --- FIN DEL BYPASS ---
+
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=401,
@@ -113,7 +123,7 @@ def chat(
     request: ChatRequest,
     claims: dict[str, Any] = Depends(authenticate_user),
 ) -> dict[str, str]:
-    role = request.role
+    role = request.role.lower()
     token_roles = claims.get("roles")
     if (
         role not in ALLOWED_ROLES
@@ -175,7 +185,8 @@ def chat(
         )
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
+        print(f"❌ ERROR DE FOUNDRY: {str(e)}")
         raise HTTPException(
             status_code=502,
             detail="No fue posible procesar la solicitud en Azure AI Foundry.",

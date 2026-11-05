@@ -39,6 +39,12 @@ def build_index(index_name: str, synonym_map_name: str) -> SearchIndex:
             retrievable=True,
         ),
         SearchField(
+            name="invoice_content",
+            type=SearchFieldDataType.String,
+            searchable=True,
+            retrievable=True,
+        ),
+        SearchField(
             name="invoice_total",
             type=SearchFieldDataType.Double,
             filterable=True,
@@ -56,7 +62,7 @@ def build_index(index_name: str, synonym_map_name: str) -> SearchIndex:
             name="security_id",
             type=SearchFieldDataType.Collection(SearchFieldDataType.String),
             filterable=True,
-            retrievable=False,
+            retrievable=True,
         ),
         SearchField(
             name="product_names",
@@ -75,7 +81,7 @@ def main() -> int:
         print("Error: configura AZURE_SEARCH_ENDPOINT.", file=sys.stderr)
         return 1
 
-    index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "rio-claro-invoices")
+    index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "rioclaro-index")
     synonym_map_name = os.getenv(
         "AZURE_SEARCH_SYNONYM_MAP_NAME", "producto-sinonimos"
     )

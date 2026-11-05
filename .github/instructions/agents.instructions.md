@@ -10,7 +10,7 @@ applyTo: 'backend/app/**/*.py, backend/scripts/create_agents.py'
 - El endpoint se lee de la variable de entorno `FOUNDRY_PROJECT_ENDPOINT`.
 - Crea un agente por cada rol: Directivo, Analista, Gerente, Bodega, TI.
 - Cada agente debe tener instrucciones específicas de su rol (ej. el de Analista extrae facturas, el de Directivo genera reportes).
-- **Seguridad Crítica**: Para la herramienta `AzureAISearchTool`, debes configurar el filtro dinámico: `security_id/any(g: search.in(g, '{{userFilter}}'))`. Define `userFilter` como un `StructuredInput` requerido.
+- **Seguridad Crítica**: `security_id` es `Collection(Edm.String)`, por lo que `AzureAISearchTool` debe usar el filtro dinámico `security_id/any(g: search.in(g, '{{userFilter}}'))`. Define `userFilter` como un `StructuredInput` requerido.
 - Usa el modelo `gpt-4o` o el que esté desplegado en el proyecto.
 
 ## Backend FastAPI (main.py)

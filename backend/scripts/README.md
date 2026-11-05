@@ -46,6 +46,10 @@ roles a cada archivo que se quiera indexar. Usa una copia propia del archivo de
 ejemplo y configúrala mediante `INVOICE_ACCESS_MANIFEST_PATH`. Los roles se
 guardan en `security_id`, que es filtrable y no recuperable desde resultados de
 búsqueda. Los archivos sin asignación no se indexan.
+La ingesta guarda el texto OCR y un resumen de campos en `invoice_content`,
+utilizado por el agente como contenido de búsqueda. Si el índice ya existía,
+actualízalo y vuelve a ejecutar `seed_data.py` para completar ese campo en los
+documentos existentes.
 
 `seed_data.py` registra en el reporte JSONL los documentos en estado
 `needs_review`. Si falta la confianza o `VendorName`/`InvoiceTotal` tiene

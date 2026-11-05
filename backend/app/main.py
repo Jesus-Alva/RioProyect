@@ -8,6 +8,7 @@ from urllib.parse import quote
 import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 from pydantic import BaseModel, Field
@@ -19,6 +20,18 @@ from azure.identity import DefaultAzureCredential
 load_dotenv()
 
 app = FastAPI()
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 bearer_scheme = HTTPBearer(auto_error=False)
 ALLOWED_ROLES = {"directivo", "analista", "gerente", "bodega", "ti"}
 AGENT_NAMES = {

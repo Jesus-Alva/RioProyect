@@ -36,10 +36,29 @@ poder usarla gente de bodega y ventas, algunos solo desde el celular o por voz.
 datos se ordenan mientras la empresa sigue vendiendo. 
 - Confianza: Laura y los gerentes temen que la IA “los reemplace” o que invente cifras; se
 debe mostrar que la IA apoya y que siempre hay una persona que revisa.
+- Capacidad para administrar las 5 sucursales
+- Capacidad para segmentar la informacion por cada sucrsual  
 
 ## 2. Modulos preevistos del sistema
-> EL sistema debe de contar con los siguientes modulos
+### Módulo Operador de Bodega (Toño)
+1. Interfaz *mobile-first* (diseñada para celular) con un botón de entrada por voz (Speech-to-Text).
+2. Capacidad de hacer consultas en lenguaje natural (ej. "¿Cuánto cloro de litro nos queda?") y recibir respuestas sintetizadas (Text-to-Speech opcional).
+
+### Módulo Administrador de TI (Carlos)
+1. Monitoreo del estado del sistema y de las conexiones a Azure.
+2. Gestión de identidades (simulada con el selector de roles) basada en Entra ID.
+3. Control de seguridad: Capacidad de "pausar" o limitar el acceso a los agentes si algo falla.
+
+### Funcionalidades Transversales de IA Responsable (UI/UX)
+Para cumplir con los criterios del examen AI-901, la interfaz web incluirá:
+- **Transparencia:** Aviso visible en el chat: *"Estás interactuando con un asistente de IA. Las respuestas se basan en documentos oficiales"*.
+- **Transparencia (Fuentes):** Cada respuesta del agente incluirá una cita al documento del cual extrajo la información (ej. `Fuente: factura_001.pdf`).
+- **Rendición de cuentas (Human-in-the-loop):** En el módulo de Laura, las facturas con confianza menor a 0.8 se mostrarán en un panel de "Revisión Manual" requiriendo su aprobación antes de registrarse.
+- **Equidad:** El agente consulta un índice centralizado, garantizando que las respuestas no favorezcan a ninguna sucursal por tener "mejores datos".
 ### Modulo Directivos:
+1. Modulo dashboard para generar un reporte de ventas en el que las 5 sucursales coincidan y un piloto que cueste lo previsto. .
+2. Modulo para concer el inventario de cada sucursal
+3. Modulo para visualizacion de facturas
 #### Funciones esperadas:
 1. Generar Reporte de ventas para la direccion por producto
 2. Filtrado de informacion del reporte por sucursal
@@ -55,6 +74,9 @@ Lectura de archivos para extraccion de informacion mediante IA (Punto 3 apartado
 
 ### LO que debe de incluir el modelo de IA
 []Uso desde el celular o por voz
+
+### Funciones generales
+1. Modulo en donde los proveedores carguen sus facturas (el sistema debe indexar los documentos en Azure AI Search)
 
 ## 3. Implementacion
 

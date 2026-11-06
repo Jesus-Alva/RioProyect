@@ -43,3 +43,8 @@ applyTo: 'frontend/**/*.{js,jsx,css}'
 - Al subir el archivo, envíalo a `/api/invoices/upload` con el token JWT.
 - Muestra estados visuales: "Procesando...", "Factura guardada con éxito", "Factura duplicada" o "Requiere revisión manual".
 - Tras una carga exitosa, actualiza la lista de facturas del panel.
+
+## Interfaz para Clientes (Quejas)
+- En la página `/login`, agrega una pestaña o botón que diga "Soy Cliente - Levantar Queja".
+- Al hacer clic, muestra un formulario (Nombre, Correo, Sucursal, Mensaje). Al enviar, llama a `POST /api/complaints` y muestra un mensaje de éxito.
+- En el Dashboard de la Gerente (Mariana), agrega un panel de "Bandeja de Quejas". Debe mostrar la lista de quejas, con su resumen de IA, la sucursal y un botón para cambiar el estado a "En Proceso" o "Resuelto".

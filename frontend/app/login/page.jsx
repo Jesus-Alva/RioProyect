@@ -41,6 +41,38 @@ async function submitAuthRequest(path, body) {
   return payload;
 }
 
+async function submitComplaintRequest(body) {
+  let response;
+  try {
+    response = await fetch(
+      `${BACKEND_URL.replace(/\/$/, "")}/api/complaints`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+  } catch {
+    throw new Error("No se pudo conectar con el servicio de quejas.");
+  }
+
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error("El servicio de quejas devolvió una respuesta inválida.");
+  }
+  if (!response.ok) {
+    const detail = payload.detail;
+    throw new Error(
+      typeof detail === "string"
+        ? detail
+        : "Revisa los datos de la queja e inténtalo de nuevo.",
+    );
+  }
+  return payload;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
@@ -53,6 +85,10 @@ export default function LoginPage() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [requestedRole, setRequestedRole] = useState(OPERATIONAL_ROLES[0]);
   const [requestedBranch, setRequestedBranch] = useState("");
+  const [complaintName, setComplaintName] = useState("");
+  const [complaintEmail, setComplaintEmail] = useState("");
+  const [complaintBranch, setComplaintBranch] = useState("");
+  const [complaintMessage, setComplaintMessage] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,6 +101,28 @@ export default function LoginPage() {
     event.preventDefault();
     setError("");
     setNotice("");
+
+    if (mode === "complaint") {
+      setIsSubmitting(true);
+      try {
+        const result = await submitComplaintRequest({
+          nombre: complaintName,
+          correo: complaintEmail,
+          sucursal: complaintBranch,
+          mensaje: complaintMessage,
+        });
+        setNotice(result.detail);
+        setComplaintName("");
+        setComplaintEmail("");
+        setComplaintBranch("");
+        setComplaintMessage("");
+      } catch (requestError) {
+        setError(requestError.message);
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
 
     if (mode === "register") {
       if (!/\p{Lu}/u.test(password)) {
@@ -128,6 +186,7 @@ export default function LoginPage() {
   }
 
   const isRegistering = mode === "register";
+  const isComplaintMode = mode === "complaint";
   const passwordLengthIsValid = password.length >= 12 && password.length <= 128;
   const passwordHasUppercase = /\p{Lu}/u.test(password);
   const passwordHasNumber = /[0-9]/.test(password);
@@ -167,15 +226,19 @@ export default function LoginPage() {
             exit={{ opacity: 0, y: reduceMotion ? 0 : -5 }}
             transition={{ duration: reduceMotion ? 0 : 0.18 }}
           >
-            {isRegistering ? "Solicitar una cuenta" : "Inicia sesión"}
+            {isComplaintMode
+              ? "Quejas y sugerencias"
+              : isRegistering
+                ? "Solicitar una cuenta"
+                : "Inicia sesión"}
           </motion.h1>
         </AnimatePresence>
         <div className="auth-tabs" role="tablist" aria-label="Acceso">
           <button
-            className={`button ${!isRegistering ? "button-primary" : "button-secondary"}`}
+            className={`button ${mode === "login" ? "button-primary" : "button-secondary"}`}
             type="button"
             role="tab"
-            aria-selected={!isRegistering}
+            aria-selected={mode === "login"}
             onClick={() => changeMode("login")}
           >
             Iniciar sesión
@@ -190,6 +253,14 @@ export default function LoginPage() {
             Registrarse
           </button>
         </div>
+        <button
+          className="button button-secondary auth-client-link"
+          type="button"
+          aria-pressed={isComplaintMode}
+          onClick={() => changeMode(isComplaintMode ? "login" : "complaint")}
+        >
+          Soy Cliente - Levantar Queja
+        </button>
         <AnimatePresence initial={false}>
           {isRegistering && (
             <motion.p
@@ -205,6 +276,12 @@ export default function LoginPage() {
             </motion.p>
           )}
         </AnimatePresence>
+        {isComplaintMode && (
+          <p className="auth-complaint-intro">
+            Comparte lo ocurrido. El equipo de Gerencia dará seguimiento a tu
+            mensaje.
+          </p>
+        )}
         {notice && (
           <p className="success-message" role="status">
             {notice}
@@ -215,6 +292,71 @@ export default function LoginPage() {
             {error}
           </p>
         )}
+        {isComplaintMode ? (
+          <form
+            className="auth-form complaint-public-form"
+            onSubmit={handleSubmit}
+          >
+            <label htmlFor="complaint-name">Nombre</label>
+            <input
+              id="complaint-name"
+              name="nombre"
+              type="text"
+              autoComplete="name"
+              value={complaintName}
+              onChange={(event) => setComplaintName(event.target.value)}
+              minLength={1}
+              maxLength={120}
+              required
+            />
+            <label htmlFor="complaint-email">Correo electrónico</label>
+            <input
+              id="complaint-email"
+              name="correo"
+              type="email"
+              autoComplete="email"
+              value={complaintEmail}
+              onChange={(event) => setComplaintEmail(event.target.value)}
+              maxLength={254}
+              required
+            />
+            <label htmlFor="complaint-branch">Sucursal</label>
+            <select
+              id="complaint-branch"
+              name="sucursal"
+              value={complaintBranch}
+              onChange={(event) => setComplaintBranch(event.target.value)}
+              required
+            >
+              <option value="" disabled>
+                Selecciona una sucursal
+              </option>
+              {BRANCH_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="complaint-message">Mensaje</label>
+            <textarea
+              id="complaint-message"
+              name="mensaje"
+              value={complaintMessage}
+              onChange={(event) => setComplaintMessage(event.target.value)}
+              minLength={10}
+              maxLength={5000}
+              rows={5}
+              required
+            />
+            <button
+              className="button button-primary auth-button"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Enviando..." : "Enviar mensaje"}
+            </button>
+          </form>
+        ) : (
         <form className="auth-form" onSubmit={handleSubmit}>
           {isRegistering && (
             <>
@@ -371,6 +513,7 @@ export default function LoginPage() {
                 : "Iniciar sesión"}
           </button>
         </form>
+        )}
       </motion.section>
     </main>
   );

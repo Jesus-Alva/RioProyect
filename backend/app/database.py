@@ -102,6 +102,30 @@ class InvoiceUpload(Base):
     )
 
 
+class Complaint(Base):
+    __tablename__ = "complaints"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cliente_nombre: Mapped[str] = mapped_column(String(120))
+    cliente_email: Mapped[str] = mapped_column(String(254), index=True)
+    sucursal: Mapped[str] = mapped_column(String(32), index=True)
+    mensaje: Mapped[str] = mapped_column(Text)
+    categoria: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    resumen_ia: Mapped[str | None] = mapped_column(Text, nullable=True)
+    punto_critico: Mapped[str | None] = mapped_column(Text, nullable=True)
+    estado_analisis: Mapped[str] = mapped_column(String(16), default="pending")
+    estado: Mapped[str] = mapped_column(
+        String(24), default="received", index=True
+    )
+    updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fecha: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 def get_database_path() -> Path:
     configured_path = os.getenv("AUTH_DATABASE_PATH")
     if configured_path:

@@ -15,3 +15,9 @@ El usuario elige un personaje, el sistema detecta su rol y lo enruta a un Dashbo
 - **Inclusión**: Botón de voz nativo para el rol de Bodega.
 - **Rendición de cuentas**: La interfaz de Laura muestra las facturas dudosas.
 - **Requerimiento oculto**: Incluir la palabra "Brujería" 6 veces en el código.
+
+## Módulo de Quejas y Sugerencias
+- Agrega una tabla `complaints` en SQLite (id, cliente_email, sucursal, mensaje, categoria, estado, fecha).
+- Crea el endpoint `POST /api/complaints` para que los clientes levanten quejas sin necesidad de estar logueados.
+- Crea el endpoint `GET /api/complaints` (solo para el rol `gerente`) para que Mariana vea la bandeja de entrada.
+- **Análisis de IA**: Al recibir una queja, usa el agente `rio-gerente` para analizarla, extraer un resumen, identificar el "punto crítico" (ej. retraso, mala atención) y guardarlo en la base de datos.

@@ -9,6 +9,7 @@ import AdminSidebar from "./AdminSidebar.jsx";
 import AdminUserManagement from "./AdminUserManagement.jsx";
 import BranchMultiSelect from "./BranchMultiSelect.jsx";
 import ChatPanel from "./ChatPanel.jsx";
+import ComplaintInbox from "./ComplaintInbox.jsx";
 import InvoiceWorkspace from "./InvoiceWorkspace.jsx";
 import { isSupportedRole, OPERATIONAL_ROLES, ROLE_PROFILES } from "../lib/authRoles.js";
 import { clearSession, readSession, saveSession } from "../lib/authSession.js";
@@ -711,21 +712,26 @@ function AnalystPanel({ token, branches, onUnauthorized }) {
   );
 }
 
-function ManagerPanel() {
+function ManagerPanel({ token, branches, onUnauthorized }) {
   return (
     <section className="role-dashboard role-dashboard-gerente" aria-labelledby="manager-workspace-title">
       <RoleHero
         kicker="Gestión operativa"
-        title="Información para decidir"
+        title="Información y atención para decidir"
         titleId="manager-workspace-title"
-        description="Consulta facturas y proveedores para obtener resúmenes útiles en la gestión de la sucursal."
-        badge="Consulta por sucursal"
+        description="Consulta información operativa y da seguimiento a las solicitudes de tus sucursales."
+        badge="Gestión por sucursal"
       />
       <div className="role-action-grid">
         <RoleActionCard eyebrow="Documentos" title="Revisar facturas" description="Solicita resúmenes de documentos, montos y conceptos disponibles en las fuentes." index={0} />
         <RoleActionCard eyebrow="Proveedores" title="Comparar información" description="Pregunta por los proveedores que aparecen en las facturas y sus datos documentados." index={1} />
         <RoleActionCard eyebrow="Operación" title="Preparar seguimiento" description="Resume hallazgos relevantes y solicita referencias antes de tomar una decisión." index={2} />
       </div>
+      <ComplaintInbox
+        token={token}
+        branches={branches}
+        onUnauthorized={onUnauthorized}
+      />
       <div className="role-guidance-card">
         <span className="role-guidance-icon" aria-hidden="true">↗</span>
         <div>
@@ -1129,7 +1135,11 @@ export default function ProtectedDashboard() {
                   onUnauthorized={returnToLogin}
                 />
               ) : user.role === "gerente" ? (
-                <ManagerPanel />
+                <ManagerPanel
+                  token={token}
+                  branches={user.branches || []}
+                  onUnauthorized={returnToLogin}
+                />
               ) : (
                 <section className="role-dashboard">
                   <RoleHero kicker={profile.label} title={profile.name} description="Consulta al asistente para obtener información de las fuentes autorizadas." />

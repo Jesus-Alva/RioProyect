@@ -1,11 +1,12 @@
 """API FastAPI para conversaciones seguras con agentes de Azure AI Foundry."""
 
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime, timezone
 import hashlib
 import logging
 import math
 import os
+import re
 from functools import lru_cache
 from typing import Any, Literal
 import unicodedata
@@ -15,6 +16,8 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from azure.core.exceptions import AzureError
+from openai import OpenAIError
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -31,7 +34,16 @@ from azure.search.documents import SearchClient
 
 from backend.app.auth import authenticate_user, router as auth_router
 from backend.app.branches import BRANCHES, normalize_branches
-from backend.app.database import InvoiceUpload, get_db, initialize_database
+from backend.app.complaint_analysis import (
+    ComplaintAnalysisError,
+    analyze_complaint,
+)
+from backend.app.database import (
+    Complaint,
+    InvoiceUpload,
+    get_db,
+    initialize_database,
+)
 from backend.app.invoice_upload import (
     MAX_UPLOAD_BYTES,
     decide_invoice_review,
@@ -111,6 +123,38 @@ class InventoryMutationRequest(BaseModel):
         if not normalized:
             raise ValueError("Escribe el nombre del producto.")
         return normalized
+
+
+class ComplaintSubmission(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str = Field(min_length=1, max_length=120)
+    correo: str = Field(min_length=3, max_length=254)
+    sucursal: Branch
+    mensaje: str = Field(min_length=10, max_length=5000)
+
+    @field_validator("nombre", "mensaje", mode="before")
+    @classmethod
+    def normalize_complaint_text(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError("El campo debe ser texto.")
+        return value.strip()
+
+    @field_validator("correo", mode="before")
+    @classmethod
+    def normalize_complaint_email(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError("El correo debe ser texto.")
+        normalized = value.strip().casefold()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized):
+            raise ValueError("Escribe un correo electrónico válido.")
+        return normalized
+
+
+class ComplaintStatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    estado: Literal["in_progress", "resolved"]
 
 
 @lru_cache(maxsize=1)
@@ -240,6 +284,146 @@ def upload_invoice(
         db=db,
     )
     return JSONResponse(status_code=status_code, content=payload)
+
+
+@app.post("/api/complaints")
+def submit_complaint(
+    payload: ComplaintSubmission,
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    analysis = None
+    try:
+        analysis = analyze_complaint(
+            get_openai_client(),
+            message=payload.mensaje,
+            branch=payload.sucursal,
+        )
+    except (AzureError, OpenAIError, RuntimeError, ValueError) as error:
+        logger.error(
+            "Complaint analysis failed before persistence: error_type=%s "
+            "status_code=%s error_code=%s validation_reason=%s",
+            type(error).__name__,
+            getattr(error, "status_code", None),
+            getattr(error, "code", None),
+            str(error) if isinstance(error, ComplaintAnalysisError) else None,
+        )
+
+    complaint = Complaint(
+        cliente_nombre=payload.nombre,
+        cliente_email=payload.correo,
+        sucursal=payload.sucursal,
+        mensaje=payload.mensaje,
+        categoria=analysis["category"] if analysis else None,
+        resumen_ia=analysis["summary"] if analysis else None,
+        punto_critico=analysis["critical_point"] if analysis else None,
+        estado_analisis="completed" if analysis else "failed",
+        estado="received",
+    )
+    db.add(complaint)
+    db.commit()
+    db.refresh(complaint)
+
+    analysis_succeeded = analysis is not None
+    return JSONResponse(
+        status_code=201 if analysis_succeeded else 202,
+        content={
+            "id": complaint.id,
+            "sucursal": complaint.sucursal,
+            "estado": complaint.estado,
+            "estado_analisis": complaint.estado_analisis,
+            "categoria": complaint.categoria,
+            "resumen_ia": complaint.resumen_ia,
+            "punto_critico": complaint.punto_critico,
+            "detail": (
+                "Recibimos tu queja y el equipo puede darle seguimiento."
+                if analysis_succeeded
+                else (
+                    "Recibimos tu queja; el análisis automático no está disponible."
+                )
+            ),
+        },
+    )
+
+
+@app.get("/api/complaints")
+def complaint_inbox(
+    estado: Literal["received", "in_progress", "resolved"] | None = None,
+    user: dict[str, Any] = Depends(authenticate_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if user["role"] != "gerente":
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Gerente puede consultar la bandeja de quejas.",
+        )
+
+    authorized_branches = normalize_branches(user["branches"])
+    query = select(Complaint).where(
+        Complaint.sucursal.in_(authorized_branches)
+    )
+    if estado is not None:
+        query = query.where(Complaint.estado == estado)
+    complaints = db.scalars(
+        query.order_by(Complaint.fecha.desc(), Complaint.id.desc()).limit(200)
+    )
+    return {
+        "items": [
+            {
+                "id": complaint.id,
+                "cliente_nombre": complaint.cliente_nombre,
+                "cliente_email": complaint.cliente_email,
+                "sucursal": complaint.sucursal,
+                "mensaje": complaint.mensaje,
+                "categoria": complaint.categoria,
+                "resumen_ia": complaint.resumen_ia,
+                "punto_critico": complaint.punto_critico,
+                "estado_analisis": complaint.estado_analisis,
+                "estado": complaint.estado,
+                "fecha": complaint.fecha.isoformat() if complaint.fecha else None,
+                "updated_at": (
+                    complaint.updated_at.isoformat()
+                    if complaint.updated_at
+                    else None
+                ),
+            }
+            for complaint in complaints
+        ]
+    }
+
+
+@app.patch("/api/complaints/{complaint_id}")
+def update_complaint_status(
+    complaint_id: int,
+    payload: ComplaintStatusUpdate,
+    user: dict[str, Any] = Depends(authenticate_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if user["role"] != "gerente":
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Gerente puede actualizar el estado de una queja.",
+        )
+
+    authorized_branches = normalize_branches(user["branches"])
+    complaint = db.scalar(
+        select(Complaint).where(
+            Complaint.id == complaint_id,
+            Complaint.sucursal.in_(authorized_branches),
+        )
+    )
+    if complaint is None:
+        raise HTTPException(status_code=404, detail="No existe esa queja.")
+
+    complaint.estado = payload.estado
+    complaint.updated_by = user["id"]
+    complaint.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(complaint)
+    return {
+        "id": complaint.id,
+        "estado": complaint.estado,
+        "updated_at": complaint.updated_at.isoformat(),
+    }
 
 
 @app.get("/api/invoices/reviews")

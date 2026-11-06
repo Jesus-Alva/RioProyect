@@ -51,6 +51,27 @@ los importes y conteos de las facturas indexadas o aprobadas por sucursal
 autorizada. El total representa importes brutos extraídos de facturas, no ventas
 netas; excluye facturas pendientes de revisión y declinadas.
 
+## Quejas y sugerencias
+
+En `/login`, cualquier cliente puede enviar su nombre, correo, sucursal y
+mensaje sin iniciar sesión. `POST /api/complaints` usa el agente `rio-gerente`
+de Azure AI Foundry para obtener categoría, resumen y punto crítico antes de
+insertar la queja en SQLite. El modelo recibe solo el texto y la sucursal; el
+rol y el filtro de sucursal se fijan en el backend. Si el análisis falla, la
+queja se conserva para revisión manual y la respuesta indica que el resumen de
+IA no está disponible.
+
+El panel Gerente consulta `GET /api/complaints` y actualiza seguimiento con
+`PATCH /api/complaints/{id}`. Ambos requieren una sesión Gerente vigente y
+limitan los datos a sus sucursales asignadas. Los estados de seguimiento son
+`received`, `in_progress` y `resolved`; las categorías provienen del análisis
+del agente. La bandeja se actualiza al abrirse, al volver a la pestaña y cada
+30 segundos; también puede actualizarse manualmente. El formulario público no
+guarda los datos de contacto en el navegador; aplica límites de tamaño y
+validación de correo. En despliegues
+públicos, configura límites de solicitudes en el gateway o proxy para mitigar
+spam.
+
 ## Frontend
 
 Copia `frontend\.env.example` a `frontend\.env.local`, instala dependencias y

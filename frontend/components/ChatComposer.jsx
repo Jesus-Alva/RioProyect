@@ -10,6 +10,7 @@ export default function ChatComposer({
   onChange,
   onSubmit,
   isSending,
+  disabled = false,
 }) {
   const recognitionRef = useRef(null);
   const [isListening, setIsListening] = useState(false);
@@ -87,7 +88,7 @@ export default function ChatComposer({
         onChange={(event) => onChange(event.target.value)}
         placeholder="Escribe tu consulta..."
         maxLength={2000}
-        disabled={isSending}
+        disabled={isSending || disabled}
         required
       />
       {voiceStatus && (
@@ -121,7 +122,7 @@ export default function ChatComposer({
           <button
             className="button button-primary"
             type="submit"
-            disabled={isSending || !value.trim()}
+            disabled={isSending || disabled || !value.trim()}
           >
             {isSending ? "Enviando..." : "Enviar"}
           </button>

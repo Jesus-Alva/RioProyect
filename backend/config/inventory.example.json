@@ -1,0 +1,9 @@
+[
+  {
+    "id": "sku-ejemplo-001",
+    "producto": "Producto de ejemplo",
+    "cantidad": 0,
+    "branch": "leon",
+    "roles": ["bodega"]
+  }
+]

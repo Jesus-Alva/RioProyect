@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Sequence
 
 import jwt
 from passlib.context import CryptContext
@@ -37,12 +38,15 @@ def verify_password(password: str, password_hash: str) -> bool:
     return password_context.verify(password, password_hash)
 
 
-def create_access_token(user_id: int, role: str) -> str:
+def create_access_token(
+    user_id: int, role: str, branches: Sequence[str]
+) -> str:
     secret, issuer, audience, expires_minutes = get_jwt_settings()
     now = datetime.now(timezone.utc)
     claims = {
         "sub": str(user_id),
         "role": role,
+        "branches": list(branches),
         "iat": now,
         "exp": now + timedelta(minutes=expires_minutes),
         "iss": issuer,
@@ -59,5 +63,15 @@ def decode_access_token(token: str) -> dict:
         algorithms=[JWT_ALGORITHM],
         audience=audience,
         issuer=issuer,
-        options={"require": ["sub", "role", "iat", "exp", "iss", "aud"]},
+        options={
+            "require": [
+                "sub",
+                "role",
+                "branches",
+                "iat",
+                "exp",
+                "iss",
+                "aud",
+            ]
+        },
     )

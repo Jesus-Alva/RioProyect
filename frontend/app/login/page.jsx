@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import { OPERATIONAL_ROLES, ROLE_PROFILES } from "../../lib/authRoles.js";
+import { BRANCH_OPTIONS } from "../../lib/branches.js";
 import { readSession, saveSession } from "../../lib/authSession.js";
 
 const BACKEND_URL =
@@ -49,6 +51,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [requestedRole, setRequestedRole] = useState(OPERATIONAL_ROLES[0]);
+  const [requestedBranch, setRequestedBranch] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -89,9 +92,12 @@ export default function LoginPage() {
           email,
           password,
           role: requestedRole,
+          branch: requestedBranch,
         });
         setPassword("");
         setConfirmation("");
+        setShowPassword(false);
+        setShowConfirmation(false);
         setMode("login");
         setNotice(result.message);
         return;
@@ -112,6 +118,8 @@ export default function LoginPage() {
 
   function changeMode(nextMode) {
     setMode(nextMode);
+    setShowPassword(false);
+    setShowConfirmation(false);
     setError("");
     setNotice("");
   }
@@ -137,7 +145,16 @@ export default function LoginPage() {
           layout: { duration: reduceMotion ? 0 : 0.3, ease: [0.22, 1, 0.36, 1] },
         }}
       >
-        <p className="eyebrow">Distribuidora Río Claro</p>
+        <div className="brand-logo-frame auth-brand-logo">
+          <Image
+            src="/rio-claro-logo.png"
+            alt="Distribuidora Río Claro"
+            fill
+            priority
+            sizes="(max-width: 480px) 144px, 176px"
+            className="brand-logo-image"
+          />
+        </div>
         <AnimatePresence mode="wait" initial={false}>
           <motion.h1
             id="auth-title"
@@ -212,7 +229,7 @@ export default function LoginPage() {
             <input
               id="auth-password"
               name="password"
-              type={isRegistering && showPassword ? "text" : "password"}
+              type={showPassword ? "text" : "password"}
               autoComplete={isRegistering ? "new-password" : "current-password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -220,17 +237,15 @@ export default function LoginPage() {
               maxLength={128}
               required
             />
-            {isRegistering && (
-              <button
-                className="password-visibility-toggle"
-                type="button"
-                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                aria-pressed={showPassword}
-                onClick={() => setShowPassword((visible) => !visible)}
-              >
-                <PasswordVisibilityIcon isVisible={showPassword} />
-              </button>
-            )}
+            <button
+              className="password-visibility-toggle"
+              type="button"
+              aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((visible) => !visible)}
+            >
+              <PasswordVisibilityIcon isVisible={showPassword} />
+            </button>
           </div>
           <AnimatePresence initial={false}>
             {isRegistering && (
@@ -303,7 +318,24 @@ export default function LoginPage() {
                     </option>
                   ))}
                 </select>
-              </motion.div>
+                  <label htmlFor="requested-branch">Sucursal solicitada</label>
+                  <select
+                    id="requested-branch"
+                    name="branch"
+                    value={requestedBranch}
+                    required
+                    onChange={(event) => setRequestedBranch(event.target.value)}
+                  >
+                    <option value="" disabled>
+                      Selecciona una sucursal
+                    </option>
+                    {BRANCH_OPTIONS.map(({ value, label }) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </motion.div>
             )}
           </AnimatePresence>
           <button

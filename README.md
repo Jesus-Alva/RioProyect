@@ -68,3 +68,19 @@ Credenciales para administrador
 Creadenciales para Directivo
 - Correo: directivo@gmail.com
 - Password: Directivo@123
+
+Credenciales para Analista
+- Correo: analista@gmail.com
+- Password: Analista@123
+
+Credenciales para Gerente Sucursal Guadalajara
+- Correo: gerente_guadalajara@gmail.com
+- Password: GerenteGDL@1
+
+Credenciales para Bodega Sucursal Gudalajara
+- Correo: bodega_guadalajara@gmail.com
+- Password: BodegaGDL@12
+
+Credenciales para TI
+- Correo: ti@gmail.com
+- Password: Ti@123456789

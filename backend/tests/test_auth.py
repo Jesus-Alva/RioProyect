@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import jwt
 from fastapi.testclient import TestClient
@@ -12,6 +12,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from backend.app import main
+from backend.app.branches import BRANCHES
 from backend.app.database import User, get_database_path, get_engine
 from backend.app.security import hash_password
 from backend.scripts import create_admin
@@ -48,23 +49,43 @@ class AuthenticationTests(unittest.TestCase):
             session.execute(delete(User))
             session.commit()
 
-    def register(self, email="staff@example.com", role="analista"):
+    def register(
+        self, email="staff@example.com", role="analista", branch="guadalajara"
+    ):
         return self.client.post(
             "/api/auth/register",
             json={
                 "email": email,
                 "password": "Valid-password-123!",
                 "role": role,
+                "branch": branch,
             },
         )
 
-    def create_user(self, email, role, status="active", is_active=True):
+    def create_user(
+        self,
+        email,
+        role,
+        status="active",
+        is_active=True,
+        branch="guadalajara",
+    ):
         with Session(get_engine(str(get_database_path()))) as session:
             user = User(
                 email=email,
                 password_hash=hash_password("valid-password-123"),
                 requested_role=None,
+                requested_branches=None,
                 role=role,
+                branches=(
+                    None
+                    if branch is None
+                    else list(BRANCHES)
+                    if branch == "all"
+                    else branch
+                    if isinstance(branch, list)
+                    else [branch]
+                ),
                 status=status,
                 is_active=is_active,
             )
@@ -73,10 +94,10 @@ class AuthenticationTests(unittest.TestCase):
             session.refresh(user)
             return user.id
 
-    def login(self, email):
+    def login(self, email, password="valid-password-123"):
         return self.client.post(
             "/api/auth/login",
-            json={"email": email, "password": "valid-password-123"},
+            json={"email": email, "password": password},
         )
 
     def admin_headers(self):
@@ -93,6 +114,8 @@ class AuthenticationTests(unittest.TestCase):
         self.assertNotIn("access_token", payload)
         self.assertEqual(payload["user"]["email"], "staff@example.com")
         self.assertEqual(payload["user"]["requested_role"], "analista")
+        self.assertEqual(payload["user"]["requested_branches"], ["guadalajara"])
+        self.assertEqual(payload["user"]["branches"], [])
         self.assertIsNone(payload["user"]["role"])
         self.assertEqual(payload["user"]["status"], "pending")
         with Session(get_engine(str(get_database_path()))) as session:
@@ -127,17 +150,184 @@ class AuthenticationTests(unittest.TestCase):
     def test_pending_user_cannot_login_until_admin_assigns_role(self):
         registration = self.register()
         user_id = registration.json()["user"]["id"]
-        self.assertEqual(self.login("staff@example.com").status_code, 403)
+        self.assertEqual(
+            self.login(
+                "staff@example.com", password="Valid-password-123!"
+            ).status_code,
+            403,
+        )
 
         response = self.client.patch(
             f"/api/auth/admin/users/{user_id}",
             headers=self.admin_headers(),
-            json={"role": "analista", "is_active": True},
+            json={
+                "role": "analista",
+                "branches": ["guadalajara"],
+                "is_active": True,
+            },
         )
         self.assertEqual(response.status_code, 200)
-        login = self.login("staff@example.com")
+        login = self.login("staff@example.com", password="Valid-password-123!")
         self.assertEqual(login.status_code, 200)
         self.assertEqual(login.json()["user"]["role"], "analista")
+        self.assertEqual(login.json()["user"]["branches"], ["guadalajara"])
+
+    def test_registration_cannot_request_all_branches(self):
+        response = self.register(branch="all")
+        self.assertEqual(response.status_code, 422)
+
+    def test_active_legacy_user_without_branch_cannot_login(self):
+        self.create_user(
+            "legacy@example.com",
+            "analista",
+            branch=None,
+        )
+        response = self.login("legacy@example.com")
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("asignar una sucursal", response.json()["detail"])
+
+    def test_admin_must_assign_branch_before_activating_a_legacy_user(self):
+        user_id = self.create_user(
+            "legacy@example.com",
+            "analista",
+            status="pending",
+            is_active=False,
+            branch=None,
+        )
+        headers = self.admin_headers()
+        missing_branch = self.client.patch(
+            f"/api/auth/admin/users/{user_id}",
+            headers=headers,
+            json={"role": "bodega", "is_active": True},
+        )
+        self.assertEqual(missing_branch.status_code, 422)
+
+        assigned = self.client.patch(
+            f"/api/auth/admin/users/{user_id}",
+            headers=headers,
+            json={"role": "bodega", "branches": list(BRANCHES), "is_active": True},
+        )
+        self.assertEqual(assigned.status_code, 200)
+        self.assertEqual(assigned.json()["user"]["branches"], list(BRANCHES))
+        self.assertEqual(self.login("legacy@example.com").status_code, 200)
+
+    def test_admin_can_assign_multiple_branches_to_operational_accounts(self):
+        headers = self.admin_headers()
+        for role in ("directivo", "analista", "gerente", "bodega", "ti"):
+            user_id = self.create_user(
+                f"{role}@example.com",
+                role,
+                status="pending",
+                is_active=False,
+                branch=None,
+            )
+            assigned = self.client.patch(
+                f"/api/auth/admin/users/{user_id}",
+                headers=headers,
+                json={
+                    "role": role,
+                    "branches": ["leon", "guadalajara"],
+                    "is_active": True,
+                },
+            )
+            self.assertEqual(assigned.status_code, 200)
+            self.assertEqual(
+                assigned.json()["user"]["branches"], ["guadalajara", "leon"]
+            )
+
+    def test_branch_change_invalidates_the_previous_token(self):
+        user_id = self.create_user("staff@example.com", "bodega", branch="leon")
+        login = self.login("staff@example.com")
+        self.assertEqual(login.status_code, 200, login.text)
+        token = login.json()["access_token"]
+        current_user = self.client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(current_user.status_code, 200, current_user.text)
+        response = self.client.patch(
+            f"/api/auth/admin/users/{user_id}",
+            headers=self.admin_headers(),
+            json={"branches": ["zapopan"]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self.client.get(
+                "/api/auth/me", headers={"Authorization": f"Bearer {token}"}
+            ).status_code,
+            401,
+        )
+        renewed = self.login("staff@example.com")
+        self.assertEqual(renewed.status_code, 200)
+        self.assertEqual(renewed.json()["user"]["branches"], ["zapopan"])
+
+    def test_old_jwt_without_branch_and_forged_branch_are_rejected(self):
+        user_id = self.create_user("staff@example.com", "analista", branch="leon")
+        now = datetime.now(timezone.utc)
+        claims = {
+            "sub": str(user_id),
+            "role": "analista",
+            "iat": now,
+            "exp": now + timedelta(minutes=10),
+            "iss": "test-api",
+            "aud": "test-web",
+        }
+        old_token = jwt.encode(claims, os.environ["JWT_SECRET"], algorithm="HS256")
+        old_response = self.client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {old_token}"}
+        )
+        self.assertEqual(old_response.status_code, 401)
+
+        claims["branch"] = "all"
+        forged_token = jwt.encode(claims, os.environ["JWT_SECRET"], algorithm="HS256")
+        forged_response = self.client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {forged_token}"}
+        )
+        self.assertEqual(forged_response.status_code, 401)
+
+    def test_inventory_query_uses_verified_branch_and_operational_filter(self):
+        self.create_user(
+            "warehouse@example.com", "bodega", branch=["leon", "zapopan"]
+        )
+        token = self.login("warehouse@example.com").json()["access_token"]
+        credential = SimpleNamespace(close=lambda: None)
+        search_client = Mock()
+        search_client.search.return_value = [
+            {"producto": "Arroz", "cantidad": 12, "branch": "leon"},
+            {"producto": "Frijol", "cantidad": 8, "branch": "zapopan"},
+        ]
+        with (
+            patch.dict(os.environ, {"AZURE_SEARCH_ENDPOINT": "https://search.invalid"}),
+            patch.object(main, "DefaultAzureCredential", return_value=credential),
+            patch.object(main, "SearchClient", return_value=search_client) as factory,
+        ):
+            response = self.client.get(
+                "/api/inventory",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["branches"], ["zapopan", "leon"])
+        self.assertEqual(response.json()["items"][0]["branch"], "leon")
+        self.assertEqual(response.json()["items"][1]["branch"], "zapopan")
+        self.assertEqual(factory.call_args.kwargs["index_name"], "inventario-index")
+        self.assertEqual(
+            search_client.search.call_args.kwargs["filter"],
+            "security_id/any(g: search.in(g, 'bodega')) and "
+            "search.in(branch, 'zapopan,leon', ',')",
+        )
+        self.assertEqual(
+            search_client.search.call_args.kwargs["select"],
+            ["producto", "cantidad", "branch"],
+        )
+
+    def test_non_bodega_cannot_read_inventory(self):
+        self.create_user("analyst@example.com", "analista", branch="leon")
+        token = self.login("analyst@example.com").json()["access_token"]
+        response = self.client.get(
+            "/api/inventory",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(response.status_code, 403)
 
     def test_login_rejects_invalid_password_and_suspended_accounts(self):
         user_id = self.create_user("staff@example.com", "analista")
@@ -239,13 +429,107 @@ class AuthenticationTests(unittest.TestCase):
 
     def test_regular_user_cannot_select_another_agent(self):
         self.create_user("staff@example.com", "directivo")
-        token = self.login("staff@example.com").json()["access_token"]
+        login = self.login("staff@example.com")
+        self.assertEqual(login.status_code, 200, login.text)
+        token = login.json()["access_token"]
         response = self.client.post(
             "/api/chat",
             headers={"Authorization": f"Bearer {token}"},
-            json={"message": "consulta", "agent_role": "bodega"},
+            json={
+                "message": "consulta",
+                "agent_role": "bodega",
+                "branches": ["guadalajara"],
+            },
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_chat_accepts_assigned_branch_lists_and_passes_only_selected_scope(self):
+        self.create_user(
+            "staff@example.com", "analista", branch=["zapopan", "leon"]
+        )
+        login = self.login("staff@example.com")
+        self.assertEqual(login.status_code, 200, login.text)
+        token = login.json()["access_token"]
+        current_user = self.client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(current_user.status_code, 200, current_user.text)
+        created = []
+        requests = []
+        openai_client = SimpleNamespace(
+            conversations=SimpleNamespace(
+                create=lambda items, metadata: (
+                    created.append(metadata)
+                    or SimpleNamespace(id=f"conversation-{len(created)}")
+                ),
+                retrieve=lambda _conversation_id: None,
+                items=SimpleNamespace(create=lambda **_kwargs: None),
+            ),
+            responses=SimpleNamespace(
+                create=lambda **kwargs: (
+                    requests.append(kwargs)
+                    or SimpleNamespace(output_text="Respuesta de prueba")
+                )
+            ),
+        )
+
+        with patch.object(main, "get_openai_client", return_value=openai_client):
+            assigned = self.client.post(
+                "/api/chat",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"message": "consulta", "branches": ["leon", "zapopan"]},
+            )
+            subset = self.client.post(
+                "/api/chat",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"message": "solo León", "branches": ["leon"]},
+            )
+
+        self.assertEqual(assigned.status_code, 200)
+        self.assertEqual(assigned.json()["branches"], ["zapopan", "leon"])
+        self.assertEqual(subset.status_code, 200)
+        self.assertEqual(subset.json()["branches"], ["leon"])
+        self.assertEqual(created[0]["branches"], ["zapopan", "leon"])
+        self.assertEqual(created[1]["branches"], ["leon"])
+        self.assertEqual(
+            [
+                request["extra_body"]["structured_inputs"]["branchFilter"]
+                for request in requests
+            ],
+            ["zapopan,leon", "leon"],
+        )
+
+    def test_chat_rejects_missing_empty_malformed_and_unassigned_branches(self):
+        self.create_user(
+            "staff@example.com", "analista", branch=["guadalajara", "zapopan"]
+        )
+        login = self.login("staff@example.com")
+        self.assertEqual(login.status_code, 200, login.text)
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        missing = self.client.post(
+            "/api/chat", headers=headers, json={"message": "consulta"}
+        )
+        empty = self.client.post(
+            "/api/chat",
+            headers=headers,
+            json={"message": "consulta", "branches": []},
+        )
+        malformed = self.client.post(
+            "/api/chat",
+            headers=headers,
+            json={"message": "consulta", "branches": "guadalajara"},
+        )
+        unassigned = self.client.post(
+            "/api/chat",
+            headers=headers,
+            json={"message": "consulta", "branches": ["leon"]},
+        )
+        self.assertEqual(missing.status_code, 422)
+        self.assertEqual(empty.status_code, 422)
+        self.assertEqual(malformed.status_code, 422)
+        self.assertEqual(unassigned.status_code, 403)
 
     def test_admin_can_chat_with_each_agent_in_separate_conversations(self):
         headers = self.admin_headers()
@@ -283,7 +567,11 @@ class AuthenticationTests(unittest.TestCase):
                 response = self.client.post(
                     "/api/chat",
                     headers=headers,
-                    json={"message": "consulta", "agent_role": role},
+                    json={
+                        "message": "consulta",
+                        "agent_role": role,
+                        "branches": ["zapopan", "guadalajara"],
+                    },
                 )
                 self.assertEqual(response.status_code, 200)
 
@@ -291,6 +579,10 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(
             [request["extra_body"]["structured_inputs"]["userFilter"] for request in requests],
             ["directivo", "analista", "gerente", "bodega", "ti"],
+        )
+        self.assertEqual(
+            [request["extra_body"]["structured_inputs"]["branchFilter"] for request in requests],
+            ["guadalajara,zapopan"] * 5,
         )
         self.assertNotIn("admin", [metadata["role"] for _, metadata in created_conversations])
 

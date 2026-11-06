@@ -1,3 +1,6 @@
 {
-  "factura_001.pdf": ["analista", "gerente", "directivo"]
+  "factura_001.pdf": {
+    "roles": ["analista", "gerente", "directivo"],
+    "branch": "leon"
+  }
 }

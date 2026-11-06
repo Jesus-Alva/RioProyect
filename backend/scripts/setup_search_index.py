@@ -65,10 +65,55 @@ def build_index(index_name: str, synonym_map_name: str) -> SearchIndex:
             retrievable=True,
         ),
         SearchField(
+            name="branch",
+            type=SearchFieldDataType.String,
+            filterable=True,
+            retrievable=True,
+        ),
+        SearchField(
             name="product_names",
             type=SearchFieldDataType.Collection(SearchFieldDataType.String),
             searchable=True,
             synonym_map_names=[synonym_map_name],
+            retrievable=True,
+        ),
+    ]
+    return SearchIndex(name=index_name, fields=fields)
+
+
+def build_inventory_index(index_name: str) -> SearchIndex:
+    fields = [
+        SearchField(
+            name="id",
+            type=SearchFieldDataType.String,
+            key=True,
+            searchable=False,
+            retrievable=True,
+        ),
+        SearchField(
+            name="producto",
+            type=SearchFieldDataType.String,
+            searchable=True,
+            filterable=True,
+            retrievable=True,
+        ),
+        SearchField(
+            name="cantidad",
+            type=SearchFieldDataType.Double,
+            filterable=True,
+            sortable=True,
+            retrievable=True,
+        ),
+        SearchField(
+            name="branch",
+            type=SearchFieldDataType.String,
+            filterable=True,
+            retrievable=True,
+        ),
+        SearchField(
+            name="security_id",
+            type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+            filterable=True,
             retrievable=True,
         ),
     ]
@@ -81,7 +126,10 @@ def main() -> int:
         print("Error: configura AZURE_SEARCH_ENDPOINT.", file=sys.stderr)
         return 1
 
-    index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "rioclaro-index")
+    index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "rio-claro-invoices")
+    inventory_index_name = os.getenv(
+        "AZURE_SEARCH_INVENTORY_INDEX_NAME", "inventario-index"
+    )
     synonym_map_name = os.getenv(
         "AZURE_SEARCH_SYNONYM_MAP_NAME", "producto-sinonimos"
     )
@@ -90,13 +138,16 @@ def main() -> int:
     try:
         client = SearchIndexClient(endpoint=endpoint, credential=credential)
         client.create_or_update_index(build_index(index_name, synonym_map_name))
+        client.create_or_update_index(build_inventory_index(inventory_index_name))
     except AzureError as error:
         print(f"Error de Azure AI Search al crear el índice: {error}", file=sys.stderr)
         return 1
     finally:
         credential.close()
 
-    print(f"Índice '{index_name}' creado o actualizado.")
+    print(
+        f"Índices '{index_name}' y '{inventory_index_name}' creados o actualizados."
+    )
     return 0
 
 

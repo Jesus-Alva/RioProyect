@@ -1,36 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 const NAV_ITEMS = [
-  { id: "admin-users", label: "Usuarios y permisos", icon: "users" },
-  { id: "admin-agents", label: "Agentes operativos", icon: "agents" },
+  { id: "users", panelId: "admin-space-users", label: "Usuarios y permisos", icon: "users" },
+  { id: "agents", panelId: "admin-space-agents", label: "Agentes operativos", icon: "agents" },
 ];
 
-export default function AdminSidebar() {
+export default function AdminSidebar({ activeSection, onSectionChange }) {
   const reduceMotion = useReducedMotion();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [activeItem, setActiveItem] = useState("admin-users");
   const duration = reduceMotion ? 0 : 0.24;
-
-  useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visibleSections = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((first, second) => second.intersectionRatio - first.intersectionRatio);
-        if (visibleSections[0]) setActiveItem(visibleSections[0].target.id);
-      },
-      { rootMargin: "-15% 0px -65% 0px", threshold: [0, 0.2, 0.5] },
-    );
-    NAV_ITEMS.forEach(({ id }) => {
-      const section = document.getElementById(id);
-      if (section) observer.observe(section);
-    });
-    return () => observer.disconnect();
-  }, []);
 
   return (
     <motion.aside
@@ -40,7 +22,15 @@ export default function AdminSidebar() {
       aria-label="Navegación del administrador"
     >
       <div className="admin-sidebar-heading">
-        <span className="admin-sidebar-mark" aria-hidden="true">RC</span>
+        <span className="brand-logo-frame admin-sidebar-mark" aria-hidden="true">
+          <Image
+            src={isCollapsed ? "/rio-claro-icon.png" : "/rio-claro-logo.png"}
+            alt=""
+            fill
+            sizes={isCollapsed ? "40px" : "112px"}
+            className={`brand-logo-image ${isCollapsed ? "admin-sidebar-icon-image" : ""}`}
+          />
+        </span>
         <AnimatePresence initial={false}>
           {!isCollapsed && (
             <motion.span
@@ -71,14 +61,15 @@ export default function AdminSidebar() {
       <nav id="admin-sidebar-navigation" className="admin-sidebar-nav">
         <p className="admin-sidebar-caption">Espacios</p>
         {NAV_ITEMS.map((item) => (
-          <a
-            className={`admin-sidebar-link ${activeItem === item.id ? "is-active" : ""}`}
-            href={`#${item.id}`}
+          <button
+            className={`admin-sidebar-link ${activeSection === item.id ? "is-active" : ""}`}
+            type="button"
             key={item.id}
             aria-label={item.label}
-            aria-current={activeItem === item.id ? "location" : undefined}
+            aria-current={activeSection === item.id ? "page" : undefined}
+            aria-controls={item.panelId}
             title={isCollapsed ? item.label : undefined}
-            onClick={() => setActiveItem(item.id)}
+            onClick={() => onSectionChange(item.id)}
           >
             <AdminNavIcon kind={item.icon} />
             <AnimatePresence initial={false}>
@@ -93,7 +84,7 @@ export default function AdminSidebar() {
                 </motion.span>
               )}
             </AnimatePresence>
-          </a>
+          </button>
         ))}
       </nav>
 

@@ -16,21 +16,25 @@ from azure.core.exceptions import AzureError
 from azure.identity import DefaultAzureCredential
 from azure.search.documents import SearchClient
 
-load_dotenv() 
-
-
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from backend.app.branches import BRANCHES
+from backend.app.roles import OPERATIONAL_ROLES
+
+load_dotenv()
+
+
 DEFAULT_INPUT_DIR = PROJECT_ROOT / "data" / "invoices"
 DEFAULT_ACCESS_MANIFEST = (
     PROJECT_ROOT / "backend" / "config" / "invoice-access.example.json"
 )
 DEFAULT_REVIEW_REPORT = PROJECT_ROOT / "data" / "needs_review.jsonl"
 SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
-MIN_CONFIDENCE = 0.5
+MIN_CONFIDENCE = 0.8
 
 
-def load_access_manifest(path: Path) -> dict[str, list[str]]:
+def load_access_manifest(path: Path) -> dict[str, dict[str, Any]]:
     if not path.is_file():
         raise FileNotFoundError(f"No se encontró el manifiesto de acceso: {path}")
 
@@ -38,21 +42,76 @@ def load_access_manifest(path: Path) -> dict[str, list[str]]:
     if not isinstance(manifest, dict):
         raise ValueError("El manifiesto debe ser un objeto JSON por nombre de archivo.")
 
-    permissions: dict[str, list[str]] = {}
-    for filename, roles in manifest.items():
+    permissions: dict[str, dict[str, Any]] = {}
+    for filename, access in manifest.items():
         if (
             not isinstance(filename, str)
             or not filename.strip()
-            or not isinstance(roles, list)
-            or not roles
-            or any(not isinstance(role, str) or not role.strip() for role in roles)
+            or not isinstance(access, dict)
+            or set(access) != {"roles", "branch"}
+            or not isinstance(access["roles"], list)
+            or not access["roles"]
+            or not isinstance(access["branch"], str)
+            or access["branch"] not in BRANCHES
+            or any(
+                not isinstance(role, str) or role not in OPERATIONAL_ROLES
+                for role in access["roles"]
+            )
         ):
             raise ValueError(
-                "Cada entrada del manifiesto debe mapear un nombre de archivo "
-                "a una lista no vacía de roles."
+                "Cada factura debe mapearse a roles operativos y una sucursal "
+                "concreta (sin 'all')."
             )
-        permissions[filename] = sorted({role.strip() for role in roles})
+        permissions[filename] = {
+            "roles": sorted(set(access["roles"])),
+            "branch": access["branch"],
+        }
     return permissions
+
+
+def load_inventory_data(path: Path) -> list[dict[str, Any]]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise ValueError("El inventario debe ser una lista JSON de productos.")
+
+    documents = []
+    for item in data:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"id", "producto", "cantidad", "branch", "roles"}
+            or not isinstance(item["id"], (str, int))
+            or not str(item["id"]).strip()
+            or not isinstance(item["producto"], str)
+            or not item["producto"].strip()
+            or not isinstance(item["branch"], str)
+            or item["branch"] not in BRANCHES
+            or not isinstance(item["roles"], list)
+            or "bodega" not in item["roles"]
+            or any(
+                not isinstance(role, str) or role not in OPERATIONAL_ROLES
+                for role in item["roles"]
+            )
+        ):
+            raise ValueError(
+                "Cada producto debe incluir id, producto, cantidad, una sucursal "
+                "concreta y roles operativos que incluyan bodega."
+            )
+        try:
+            quantity = float(item["cantidad"])
+        except (TypeError, ValueError):
+            raise ValueError("La cantidad de inventario debe ser numérica.") from None
+        if not math.isfinite(quantity):
+            raise ValueError("La cantidad de inventario debe ser finita.")
+        documents.append(
+            {
+                "id": str(item["id"]),
+                "producto": item["producto"].strip(),
+                "cantidad": quantity,
+                "branch": item["branch"],
+                "security_id": sorted(set(item["roles"])),
+            }
+        )
+    return documents
 
 
 def field_value(document_fields: dict[str, Any], name: str) -> Any:
@@ -138,6 +197,7 @@ def invoice_to_search_document(
     content_hash: str,
     document_number: int,
     role_ids: list[str],
+    branch: str,
 ) -> tuple[dict[str, Any] | None, list[str]]:
     fields = document.fields or {}
     reasons = get_review_reasons(fields)
@@ -174,6 +234,7 @@ def invoice_to_search_document(
             "invoice_total": normalized_total,
             "invoice_date": invoice_date,
             "security_id": role_ids,
+            "branch": branch,
             "product_names": [],
         },
         [],
@@ -199,6 +260,17 @@ def main() -> int:
         os.getenv("NEEDS_REVIEW_REPORT_PATH", str(DEFAULT_REVIEW_REPORT))
     )
     index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "rio-claro-invoices")
+    inventory_index_name = os.getenv(
+        "AZURE_SEARCH_INVENTORY_INDEX_NAME", "inventario-index"
+    )
+    inventory_data_path = os.getenv("INVENTORY_DATA_PATH")
+    inventory_documents = []
+    if inventory_data_path:
+        try:
+            inventory_documents = load_inventory_data(Path(inventory_data_path))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as error:
+            print(f"Error en los datos de inventario: {error}", file=sys.stderr)
+            return 1
 
     if not input_dir.is_dir():
         print(f"Error: no existe la carpeta de facturas: {input_dir}", file=sys.stderr)
@@ -215,8 +287,8 @@ def main() -> int:
         for path in input_dir.iterdir()
         if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
     )
-    if not invoice_files:
-        print(f"No se encontraron facturas compatibles en {input_dir}.")
+    if not invoice_files and not inventory_documents:
+        print(f"No se encontraron facturas compatibles en {input_dir} ni inventario.")
         return 0
 
     credential = DefaultAzureCredential()
@@ -234,9 +306,11 @@ def main() -> int:
         for invoice_path in invoice_files:
             content = invoice_path.read_bytes()
             content_hash = hashlib.sha256(content).hexdigest()
-            role_ids = access_manifest.get(invoice_path.name)
-            if not role_ids:
-                reason = ["No hay roles autorizados para este archivo en el manifiesto."]
+            access = access_manifest.get(invoice_path.name)
+            if not access:
+                reason = [
+                    "No hay roles y sucursal autorizados para este archivo en el manifiesto."
+                ]
                 append_review_record(
                     review_report, invoice_path.name, reason, content_hash
                 )
@@ -278,7 +352,8 @@ def main() -> int:
                     result.content,
                     content_hash,
                     document_number,
-                    role_ids,
+                    access["roles"],
+                    access["branch"],
                 )
                 if search_document is None:
                     append_review_record(
@@ -318,6 +393,29 @@ def main() -> int:
 
                 print(f"{invoice_path.name}: indexada correctamente.")
                 indexed_count += 1
+        if inventory_documents:
+            inventory_client = SearchClient(
+                endpoint=search_endpoint,
+                index_name=inventory_index_name,
+                credential=credential,
+            )
+            results = inventory_client.upload_documents(
+                documents=inventory_documents
+            )
+            failures = [result for result in results if not result.succeeded]
+            if failures:
+                for failure in failures:
+                    print(
+                        f"Inventario {failure.key}: no se pudo indexar: "
+                        f"{failure.error_message}",
+                        file=sys.stderr,
+                    )
+                error_count += len(failures)
+            else:
+                print(
+                    f"{len(inventory_documents)} productos indexados en "
+                    f"'{inventory_index_name}'."
+                )
     except (AzureError, OSError, ValueError) as error:
         print(f"Error durante la ingesta: {error}", file=sys.stderr)
         error_count += 1

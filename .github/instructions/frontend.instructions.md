@@ -29,3 +29,11 @@ applyTo: 'frontend/**/*.{js,jsx,css}'
 - El registro puede solicitar uno de los cinco roles operativos; la cuenta queda pendiente y únicamente `admin` asigna permisos efectivos.
 - Guarda el JWT recibido al iniciar sesión en `localStorage`; no guardes contraseñas.
 - Usa el JWT en las peticiones protegidas. Si el backend rechaza o vence la sesión, limpia el token y vuelve a `/login`.
+
+## Multi-Sucursal en UI
+- En el formulario de Registro, pide al usuario seleccionar una **Sucursal** concreta además del Rol; el registro no puede asignar sucursales adicionales ni `all`.
+- Admin gestiona una o más sucursales concretas con selección múltiple; el alcance global se representa como la lista explícita de las cinco sucursales.
+- En el chat, todos los usuarios (incluido Admin) seleccionan una o más sucursales autorizadas. Envía esa lista y deja que el backend la valide contra SQLite.
+- Cada respuesta y documento debe mantener visible su sucursal; al cambiar la selección del chat, inicia una conversación independiente.
+- En el Dashboard del **Directivo**, muestra un selector o gráfico con las 5 sucursales.
+- En el Dashboard de **Bodega**, clasifica cada elemento de inventario por su campo `branch`.

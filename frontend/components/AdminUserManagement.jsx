@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
+import BranchMultiSelect from "./BranchMultiSelect.jsx";
 import { OPERATIONAL_ROLES, ROLE_PROFILES } from "../lib/authRoles.js";
+import { formatBranchNames } from "../lib/branches.js";
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
@@ -18,6 +20,7 @@ export default function AdminUserManagement({ token, onUnauthorized }) {
   const reduceMotion = useReducedMotion();
   const [users, setUsers] = useState([]);
   const [selectedRoles, setSelectedRoles] = useState({});
+  const [selectedBranches, setSelectedBranches] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [savingUserId, setSavingUserId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -52,6 +55,16 @@ export default function AdminUserManagement({ token, onUnauthorized }) {
           payload.users.map((user) => [
             user.id,
             user.role || user.requested_role || "",
+          ]),
+        ),
+      );
+      setSelectedBranches(
+        Object.fromEntries(
+          payload.users.map((user) => [
+            user.id,
+              user.branches?.length
+                ? user.branches
+                : user.requested_branches || [],
           ]),
         ),
       );
@@ -102,7 +115,14 @@ export default function AdminUserManagement({ token, onUnauthorized }) {
     ) {
       return;
     }
-    updateUser(user, { is_active: !user.is_active });
+    const changes = { is_active: !user.is_active };
+    if (!user.is_active) {
+      if (selectedBranches[user.id]?.length) {
+        changes.branches = selectedBranches[user.id];
+      }
+      if (!user.role && selectedRoles[user.id]) changes.role = selectedRoles[user.id];
+    }
+    updateUser(user, changes);
   }
 
   async function updateUser(user, changes) {
@@ -154,8 +174,8 @@ export default function AdminUserManagement({ token, onUnauthorized }) {
     >
       <h2 id="admin-users-title">Usuarios y permisos</h2>
       <p>
-        Aprueba solicitudes asignando un rol operativo. También puedes cambiar
-        permisos o deshabilitar cuentas existentes.
+        Aprueba solicitudes asignando rol y una o más sucursales. Las cuentas
+        antiguas sin sucursal permanecen bloqueadas hasta una asignación explícita.
       </p>
       <div className="admin-user-summary" role="group" aria-label="Resumen de usuarios">
         <div className="admin-summary-card admin-summary-pending">
@@ -276,6 +296,12 @@ export default function AdminUserManagement({ token, onUnauthorized }) {
                             ? ROLE_PROFILES[user.role]?.label || user.role
                             : "Sin asignar"}
                         </strong>
+                        <span>Sucursal solicitada</span>
+                        <strong>
+                          {formatBranchNames(user.requested_branches)}
+                        </strong>
+                        <span>Sucursales asignadas</span>
+                        <strong>{formatBranchNames(user.branches)}</strong>
                       </div>
                       <label htmlFor={`role-${user.id}`}>Rol operativo</label>
                       <select
@@ -297,17 +323,41 @@ export default function AdminUserManagement({ token, onUnauthorized }) {
                           </option>
                         ))}
                       </select>
+                      <BranchMultiSelect
+                        id={`branches-${user.id}`}
+                        label="Sucursales autorizadas"
+                        description="Selecciona una o más sucursales para esta cuenta."
+                        selectedBranches={selectedBranches[user.id] || []}
+                        onChange={(branches) =>
+                          setSelectedBranches((current) => ({
+                            ...current,
+                            [user.id]: branches,
+                          }))
+                        }
+                        disabled={savingUserId === user.id}
+                      />
                       <div className="user-card-actions">
                         <button
                           className="button button-primary"
                           type="button"
-                          disabled={!selectedRole || savingUserId === user.id}
+                          disabled={
+                            !selectedRole ||
+                            !selectedBranches[user.id]?.length ||
+                            savingUserId === user.id
+                          }
                           onClick={() =>
                             updateUser(
                               user,
                               isPending || isDisabled
-                                ? { role: selectedRole, is_active: true }
-                                : { role: selectedRole },
+                                ? {
+                                    role: selectedRole,
+                                    branches: selectedBranches[user.id],
+                                    is_active: true,
+                                  }
+                                : {
+                                    role: selectedRole,
+                                    branches: selectedBranches[user.id],
+                                  },
                             )
                           }
                         >
@@ -323,7 +373,12 @@ export default function AdminUserManagement({ token, onUnauthorized }) {
                           <button
                             className="button button-secondary"
                             type="button"
-                            disabled={savingUserId === user.id}
+                            disabled={
+                              savingUserId === user.id ||
+                              (!user.is_active &&
+                                (!selectedBranches[user.id]?.length ||
+                                  (!user.role && !selectedRole)))
+                            }
                             onClick={() => toggleUserAccess(user)}
                           >
                             {user.is_active ? "Deshabilitar" : "Habilitar"}

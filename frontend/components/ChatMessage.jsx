@@ -1,4 +1,5 @@
 import { extractCitations } from "../lib/citations.js";
+import { formatBranchNames } from "../lib/branches.js";
 
 export default function ChatMessage({ message }) {
   const isUser = message.role === "user";
@@ -12,6 +13,11 @@ export default function ChatMessage({ message }) {
       aria-label={isUser ? "Tu mensaje" : "Respuesta del asistente"}
     >
       <span className="message-label">{isUser ? "Tú" : "Asistente"}</span>
+      {message.branches?.length > 0 && (
+        <span className="message-label">
+          Sucursales: {formatBranchNames(message.branches)}
+        </span>
+      )}
       <div className="whitespace-pre-wrap">{answer}</div>
       {citations.length > 0 && (
         <div>

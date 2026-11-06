@@ -56,13 +56,14 @@ No se ejecutan como parte de las pruebas unitarias.
 
 ### Cargar catálogo de inventario de prueba
 
-`seed_inventory.py` prepara o actualiza `inventario-index` con el esquema
-compartido de `setup_search_index.py` y carga un catálogo fijo de productos
-reales (incluye cloro 1l y detergente 1kg) para las cinco sucursales:
-`guadalajara`, `zapopan`, `leon`, `queretaro` y `aguascalientes`. Cada documento
-mantiene `branch` como valor escalar y `security_id` como colección con `bodega`.
-Los IDs se derivan de la sucursal y del producto, por lo que las ejecuciones
-posteriores actualizan los mismos documentos en lugar de duplicarlos.
+`seed_inventory.py` prepara o actualiza el índice configurado en
+`AZURE_SEARCH_INDEX_NAME` y `inventario-index`, y carga el catálogo en ambos.
+El catálogo `backend/data/inventario_prueba.json` contiene exclusivamente
+artículos de limpieza e higiene, SKU ficticios y cantidades de prueba para las cinco
+sucursales: `guadalajara`, `zapopan`, `leon`, `queretaro` y `aguascalientes`.
+Cada documento mantiene `branch` y `sku` como valores escalares, y
+`security_id` como colección con `bodega`. El archivo indica que sus existencias
+y precios son simulados.
 
 Configura `AZURE_SEARCH_ENDPOINT` y, si usas otro nombre, establece
 `AZURE_SEARCH_INVENTORY_INDEX_NAME`. Ejecuta desde la raíz:
@@ -71,17 +72,51 @@ Configura `AZURE_SEARCH_ENDPOINT` y, si usas otro nombre, establece
 python backend/scripts/seed_inventory.py
 ```
 
-El catálogo contiene 30 productos por sucursal. Para escribir el índice, la
-identidad seleccionada por `DefaultAzureCredential` necesita permisos para crear
-o actualizar índices y para cargar documentos en Azure AI Search.
+Se indexan 15 productos por índice (tres por cada una de las cinco sucursales).
+Para escribirlos, la identidad de `DefaultAzureCredential` necesita permisos
+para crear o actualizar índices y para cargar documentos en Azure AI Search.
+
+### Regenerar facturas de prueba
+
+```powershell
+python backend/scripts/generate_test_invoices.py
+```
+
+Genera cinco PDFs por sucursal en `data/invoices`, usando los SKU del catálogo
+simulado. Cada archivo indica que no es un CFDI ni un comprobante fiscal; los
+proveedores, precios y cantidades son ficticios.
+
+### Reiniciar los índices de prueba
+
+**Operación destructiva:** elimina todos los documentos de `rioclaro-index` e
+`inventario-index`, incluidas facturas que se hayan indexado desde usuarios.
+El script recrea ambos índices vacíos y no modifica ni elimina blobs en
+`facturas-raw`. Solo acepta esos nombres exactos y requiere confirmación:
+
+```powershell
+python backend/scripts/reset_search_indexes.py --confirm-reset
+```
+
+Para poblarlos después, ejecuta `seed_inventory.py` y, cuando corresponda,
+`seed_data.py`. Esos scripts cargan datos de nuevo.
 
 Para `create_agents.py`, configura `FOUNDRY_PROJECT_ENDPOINT` y
 `AI_SEARCH_PROJECT_CONNECTION_ID`, además de los nombres de índices si difieren
 de los valores predeterminados. La identidad debe poder crear versiones de
-agentes en el proyecto Foundry. Bodega recibe dos herramientas Azure AI Search
-separadas —una para facturas y otra para `inventario-index`— y cada herramienta
-contiene exactamente un índice; los demás agentes solo reciben la herramienta
-del índice de facturas.
+agentes en el proyecto Foundry. Foundry permite un solo índice por herramienta
+Azure AI Search, por lo que Bodega usa `rio-claro-invoices`, que contiene tanto
+facturas como los documentos de inventario replicados por `seed_inventory.py`.
+El índice independiente `inventario-index` se mantiene para las consultas de
+inventario del backend. Los filtros `security_id` y `branch` se aplican en ambos
+índices.
+
+El endpoint `POST /api/inventory` registra productos o suma existencias en
+`inventario-index` y replica el documento en el índice configurado en
+`AZURE_SEARCH_INDEX_NAME`, índice consultado por el agente Bodega. La identidad
+de `DefaultAzureCredential` que ejecuta el backend necesita el rol
+**Search Index Data Contributor** en ambos
+índices. El endpoint solo permite a usuarios Bodega escribir en sucursales
+asignadas a su cuenta.
 
 Autentícate localmente con una identidad autorizada, por ejemplo `az login`, o
 usa otra fuente de credenciales admitida por `DefaultAzureCredential`. No guardes
@@ -101,7 +136,7 @@ git diff --check
 Las pruebas de inventario verifican el esquema, cobertura y clasificación de las
 cinco sucursales, IDs estables, `security_id` y carga usando clientes mockeados.
 Las pruebas de agentes validan la serialización local de las herramientas y que
-Bodega recibe dos herramientas con un único índice cada una. No necesitan
+Bodega recibe una herramienta con un índice compartido. No necesitan
 credenciales ni realizan solicitudes a Azure.
 
 El manifiesto de factura es un objeto JSON cuyas claves son nombres de archivo.
@@ -113,7 +148,7 @@ concreta. Por ejemplo:
 
 ```json
 {
-  "factura_001.pdf": {
+  "factura_leon_01.pdf": {
     "roles": ["analista", "gerente", "directivo"],
     "branch": "leon"
   }
@@ -135,9 +170,14 @@ confianza menor que `0.8`, el documento no se envía al índice. Una confianza
 igual a `0.8` pasa el umbral.
 
 El índice de facturas y el índice `inventario-index` incluyen `branch`
-filtrable y `security_id` de tipo colección. `setup_search_index.py` crea o
+filtrable y `security_id` de tipo colección. El primero incluye también los
+campos `sku`, `categoria`, `producto` y `cantidad`. Como Foundry no incluye
+campos numéricos en los resultados de la herramienta, `seed_inventory.py` copia
+también la cantidad en texto dentro de `invoice_content`. `setup_search_index.py` crea o
 actualiza ambos índices; es una operación remota. Debe ejecutarse con una
-identidad Azure autorizada después de revisar los nombres configurados.
+identidad Azure autorizada después de revisar los nombres configurados. Ejecuta
+`seed_inventory.py` para cargar el inventario en ambos índices antes de crear o
+actualizar los agentes.
 
 Para cargar inventario, `INVENTORY_DATA_PATH` debe apuntar a una lista JSON; cada
 fila contiene exactamente `id`, `producto`, `cantidad`, `branch` y `roles`.
@@ -163,12 +203,12 @@ inventario conservan su propio `branch` escalar para no mezclar su clasificació
 ### Probar ingesta de una factura en una sucursal
 
 Desde PowerShell en la raíz del repositorio, selecciona una sucursal concreta
-en el manifiesto propio. Este ejemplo procesa `data\invoices\factura_001.pdf`:
+en el manifiesto propio. Este ejemplo procesa `data\invoices\factura_leon_01.pdf`:
 
 ```powershell
 $branch = "leon"
 $manifest = @{
-    "factura_001.pdf" = @{
+    "factura_leon_01.pdf" = @{
         roles = @("analista", "gerente", "directivo")
         branch = $branch
     }
@@ -180,7 +220,7 @@ $manifest = @{
 )
 $env:AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT = "<endpoint-document-intelligence>"
 $env:AZURE_SEARCH_ENDPOINT = "<endpoint-azure-ai-search>"
-$env:AZURE_SEARCH_INDEX_NAME = "rio-claro-invoices"
+$env:AZURE_SEARCH_INDEX_NAME = "rioclaro-index"
 $env:INVOICE_INPUT_DIR = (Resolve-Path ".\data\invoices").Path
 $env:INVOICE_ACCESS_MANIFEST_PATH = (Resolve-Path ".\backend\config\invoice-access.json").Path
 $env:NEEDS_REVIEW_REPORT_PATH = (Join-Path $PWD "data\needs_review.jsonl")
@@ -192,7 +232,7 @@ credenciales en el repositorio. Antes de ejecutar la ingesta, crea/actualiza los
 índices una vez con `.\venv\Scripts\python.exe backend\scripts\setup_search_index.py`
 y verifica que `DefaultAzureCredential` use una identidad con acceso a ambos
 servicios. En una ejecución indexable, el resultado debe indicar
-`factura_001.pdf: indexada correctamente.` y en Search verificar que el
+`factura_leon_01.pdf: indexada correctamente.` y en Search verificar que el
 documento contiene `branch=leon` y `security_id` con los roles del manifiesto.
 Si el OCR tiene confianza insuficiente, debe aparecer como `needs_review` y no
 subirse; confirma el motivo en `data\needs_review.jsonl`.

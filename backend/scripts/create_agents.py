@@ -34,12 +34,14 @@ AGENT_INSTRUCTIONS = {
         "como hechos."
     ),
     "Bodega": (
-        "Consulta las facturas y el inventario de la sucursal autorizada usando "
-        "las herramientas de búsqueda correspondientes. Usa producto y cantidad "
-        "del índice de inventario como fuente de existencias; no deduzcas "
-        "inventario actual a partir de facturas. Mantén cada resultado identificado "
-        "por el valor de branch y no mezcles cantidades de sucursales distintas "
-        "sin presentarlas por separado."
+        "Consulta el índice autorizado de facturas e inventario. Los registros "
+        "de inventario incluyen producto y cantidad en el texto del documento; "
+        "usa esa cantidad como fuente de existencias y nunca deduzcas inventario "
+        "actual a partir de facturas. "
+        "Los registros de factura tienen proveedor, fecha y total y son una fuente "
+        "distinta del inventario. Mantén cada resultado identificado por branch "
+        "y no mezcles cantidades de sucursales distintas sin presentarlas por "
+        "separado."
     ),
     "TI": (
         "Apoya consultas técnicas sobre los datos disponibles y el uso del sistema. "
@@ -73,19 +75,20 @@ SEARCH_FILTER = (
 )
 
 
+def build_agent_instructions(role: str) -> str:
+    return f"{AGENT_INSTRUCTIONS[role]}\n\n{SEARCH_INSTRUCTIONS}"
+
+
 def build_search_tool(
     search_connection_id: str,
     index_name: str,
-    inventory_index_name: str,
-    role: str,
 ) -> AzureAISearchTool:
-    selected_index = inventory_index_name if role == "Bodega" else index_name
     return AzureAISearchTool(
         azure_ai_search=AzureAISearchToolResource(
             indexes=[
                 AISearchIndexResource(
                     project_connection_id=search_connection_id,
-                    index_name=selected_index,
+                    index_name=index_name,
                     query_type=AzureAISearchQueryType.SIMPLE,
                     filter=SEARCH_FILTER,
                 )
@@ -97,18 +100,8 @@ def build_search_tool(
 def build_search_tools(
     search_connection_id: str,
     index_name: str,
-    inventory_index_name: str,
-    role: str,
 ) -> list[AzureAISearchTool]:
-    invoice_tool = build_search_tool(
-        search_connection_id, index_name, inventory_index_name, "Analista"
-    )
-    if role != "Bodega":
-        return [invoice_tool]
-    inventory_tool = build_search_tool(
-        search_connection_id, index_name, inventory_index_name, "Bodega"
-    )
-    return [invoice_tool, inventory_tool]
+    return [build_search_tool(search_connection_id, index_name)]
 
 
 def build_agent_definition(
@@ -116,16 +109,13 @@ def build_agent_definition(
     model_name: str,
     search_connection_id: str,
     index_name: str,
-    inventory_index_name: str,
 ) -> PromptAgentDefinition:
     return PromptAgentDefinition(
         model=model_name,
-        instructions=f"{AGENT_INSTRUCTIONS[role]}\n\n{SEARCH_INSTRUCTIONS}",
+        instructions=build_agent_instructions(role),
         tools=build_search_tools(
             search_connection_id,
             index_name,
-            inventory_index_name,
-            role,
         ),
         structured_inputs={
             "userFilter": StructuredInputDefinition(
@@ -149,6 +139,7 @@ def has_required_inputs(
     client: AIProjectClient,
     agent_name: str,
     required_index_names: list[str] | None = None,
+    required_instructions: str | None = None,
 ) -> bool:
     versions = iter(client.agents.list_versions(agent_name=agent_name))
     latest = next(versions, None)
@@ -159,6 +150,11 @@ def has_required_inputs(
         agent_version=str(latest.version),
     )
     definition = details.definition
+    if (
+        required_instructions is not None
+        and getattr(definition, "instructions", None) != required_instructions
+    ):
+        return False
     inputs = getattr(definition, "structured_inputs", None) or {}
     if not {"userFilter", "branchFilter"}.issubset(inputs):
         return False
@@ -166,6 +162,8 @@ def has_required_inputs(
         return True
 
     tools = getattr(definition, "tools", None) or []
+    if len(tools) != 1:
+        return False
     configured_indexes = []
     for tool in tools:
         search_resource = getattr(tool, "azure_ai_search", None)
@@ -178,15 +176,15 @@ def has_required_inputs(
         )
         if indexes is None and isinstance(search_resource, dict):
             indexes = search_resource.get("indexes")
-        if not indexes or len(indexes) != 1:
+        if not indexes:
             return False
-        index = indexes[0]
-        index_name = getattr(index, "index_name", None)
-        if index_name is None and isinstance(index, dict):
-            index_name = index.get("index_name")
-        if not index_name:
-            return False
-        configured_indexes.append(index_name)
+        for index in indexes:
+            index_name = getattr(index, "index_name", None)
+            if index_name is None and isinstance(index, dict):
+                index_name = index.get("index_name")
+            if not index_name:
+                return False
+            configured_indexes.append(index_name)
     return configured_indexes == required_index_names
 
 
@@ -197,9 +195,6 @@ def main() -> int:
     model_name = os.getenv("FOUNDRY_MODEL_NAME", "gpt-4o")
     search_connection_id = os.getenv("AI_SEARCH_PROJECT_CONNECTION_ID")
     index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "rio-claro-invoices")
-    inventory_index_name = os.getenv(
-        "AZURE_SEARCH_INVENTORY_INDEX_NAME", "inventario-index"
-    )
     if not endpoint or not search_connection_id:
         missing = [
             name
@@ -222,15 +217,11 @@ def main() -> int:
                 for role in AGENT_INSTRUCTIONS:
                     agent_name = AGENT_NAMES[role]
                     try:
-                        required_index_names = (
-                            [index_name, inventory_index_name]
-                            if role == "Bodega"
-                            else [index_name]
-                        )
                         if has_required_inputs(
                             client,
                             agent_name,
-                            required_index_names,
+                            [index_name],
+                            build_agent_instructions(role),
                         ):
                             print(f"Agente vigente, sin cambios: {agent_name}.")
                             continue
@@ -239,7 +230,6 @@ def main() -> int:
                             model_name=model_name,
                             search_connection_id=search_connection_id,
                             index_name=index_name,
-                            inventory_index_name=inventory_index_name,
                         )
                         agent = client.agents.create_version(
                             agent_name=agent_name,

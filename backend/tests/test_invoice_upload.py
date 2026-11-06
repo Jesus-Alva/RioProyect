@@ -495,6 +495,114 @@ class InvoiceUploadTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_director_sales_report_aggregates_only_approved_invoice_amounts_by_branch(self):
+        token = self.token_for(
+            role="directivo",
+            branches=("guadalajara", "leon"),
+        )
+        with Session(get_engine(str(get_database_path()))) as session:
+            session.add_all(
+                [
+                    InvoiceUpload(
+                        document_hash="1" * 64,
+                        original_filename="gdl-indexed.pdf",
+                        content_type="application/pdf",
+                        branch="guadalajara",
+                        status="indexed",
+                        uploaded_by=1,
+                        invoice_total=123.45,
+                        review_reasons="[]",
+                    ),
+                    InvoiceUpload(
+                        document_hash="2" * 64,
+                        original_filename="gdl-approved.pdf",
+                        content_type="application/pdf",
+                        branch="guadalajara",
+                        status="approved",
+                        uploaded_by=1,
+                        invoice_total=50,
+                        review_reasons="[]",
+                    ),
+                    InvoiceUpload(
+                        document_hash="3" * 64,
+                        original_filename="gdl-no-total.pdf",
+                        content_type="application/pdf",
+                        branch="guadalajara",
+                        status="approved",
+                        uploaded_by=1,
+                        invoice_total=None,
+                        review_reasons="[]",
+                    ),
+                    InvoiceUpload(
+                        document_hash="4" * 64,
+                        original_filename="zapopan-approved.pdf",
+                        content_type="application/pdf",
+                        branch="zapopan",
+                        status="approved",
+                        uploaded_by=1,
+                        invoice_total=999,
+                        review_reasons="[]",
+                    ),
+                    InvoiceUpload(
+                        document_hash="5" * 64,
+                        original_filename="leon-review.pdf",
+                        content_type="application/pdf",
+                        branch="leon",
+                        status="needs_review",
+                        uploaded_by=1,
+                        invoice_total=800,
+                        review_reasons="[]",
+                    ),
+                    InvoiceUpload(
+                        document_hash="6" * 64,
+                        original_filename="leon-declined.pdf",
+                        content_type="application/pdf",
+                        branch="leon",
+                        status="declined",
+                        uploaded_by=1,
+                        invoice_total=700,
+                        review_reasons="[]",
+                    ),
+                ]
+            )
+            session.commit()
+
+        response = self.client.get(
+            "/api/director/sales-report",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        report = response.json()
+        self.assertEqual(report["currency"], "MXN")
+        self.assertEqual(report["period"], "all_time")
+        self.assertEqual(report["included_statuses"], ["indexed", "approved"])
+        self.assertEqual(
+            report["branches"],
+            [
+                {
+                    "branch": "guadalajara",
+                    "invoice_count": 3,
+                    "invoices_with_total": 2,
+                    "total": 173.45,
+                },
+                {
+                    "branch": "leon",
+                    "invoice_count": 0,
+                    "invoices_with_total": 0,
+                    "total": 0,
+                },
+            ],
+        )
+
+    def test_sales_report_is_restricted_to_director_role(self):
+        token = self.token_for(role="gerente")
+        response = self.client.get(
+            "/api/director/sales-report",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_approval_verifies_blob_hash_and_records_reviewer(self):
         token = self.token_for()
         review_id = self.create_review()

@@ -1,7 +1,11 @@
 """Crea o actualiza el índice y el catálogo de prueba de inventario."""
 
+import json
 import os
+import re
 import sys
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
@@ -16,64 +20,121 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from backend.app.branches import BRANCHES
-from backend.scripts.setup_search_index import build_inventory_index
-
-
-INVENTORY_PRODUCTS = (
-    ("cloro 1l", "cloro-1l", 48),
-    ("detergente 1kg", "detergente-1kg", 36),
-    ("jabon lavatrastes 750ml", "jabon-lavatrastes-750ml", 30),
-    ("suavizante 1l", "suavizante-1l", 24),
-    ("limpiador multiusos 1l", "limpiador-multiusos-1l", 28),
-    ("desinfectante 1l", "desinfectante-1l", 26),
-    ("jabon en barra 400g", "jabon-en-barra-400g", 32),
-    ("bolsas para basura 90l", "bolsas-para-basura-90l", 20),
-    ("papel higienico 4 rollos", "papel-higienico-4-rollos", 40),
-    ("servilletas 250 piezas", "servilletas-250-piezas", 22),
-    ("esponja con fibra 2 piezas", "esponja-con-fibra-2-piezas", 18),
-    ("guantes de limpieza medianos", "guantes-de-limpieza-medianos", 15),
-    ("trapeador", "trapeador", 12),
-    ("escoba", "escoba", 14),
-    ("recogedor", "recogedor", 11),
-    ("cubeta 10l", "cubeta-10l", 10),
-    ("arroz 1kg", "arroz-1kg", 44),
-    ("frijol 1kg", "frijol-1kg", 38),
-    ("azucar 1kg", "azucar-1kg", 34),
-    ("aceite vegetal 1l", "aceite-vegetal-1l", 27),
-    ("harina de trigo 1kg", "harina-de-trigo-1kg", 21),
-    ("atun en agua 140g", "atun-en-agua-140g", 31),
-    ("leche uht 1l", "leche-uht-1l", 42),
-    ("agua natural 1.5l", "agua-natural-15l", 50),
-    ("sal de mesa 1kg", "sal-de-mesa-1kg", 19),
-    ("cafe soluble 120g", "cafe-soluble-120g", 16),
-    ("pasta dental 100ml", "pasta-dental-100ml", 23),
-    ("shampoo 750ml", "shampoo-750ml", 17),
-    ("jabon corporal 150g", "jabon-corporal-150g", 25),
-    ("toallas de papel 2 rollos", "toallas-de-papel-2-rollos", 13),
+from backend.scripts.setup_search_index import (
+    build_index,
+    build_inventory_index,
 )
 
-BRANCH_STOCK_OFFSETS = (0, 9, 18, 27, 36)
+
+CATALOG_PATH = Path(PROJECT_ROOT) / "backend" / "data" / "inventario_prueba.json"
+SKU_PATTERN = re.compile(r"PROD-\d{3}\Z")
+ALLOWED_CATEGORIES = {"limpieza", "higiene"}
 
 
-def build_inventory_documents() -> list[dict[str, Any]]:
-    """Construye el catálogo con cantidades e IDs repetibles en cada ejecución."""
-    documents = []
-    for branch_index, branch in enumerate(BRANCHES):
-        branch_offset = BRANCH_STOCK_OFFSETS[branch_index]
-        for product_index, (product, product_slug, base_quantity) in enumerate(
-            INVENTORY_PRODUCTS
+def load_inventory_catalog(
+    catalog_path: str | Path = CATALOG_PATH,
+) -> list[dict[str, Any]]:
+    """Carga y valida el catálogo explícitamente ficticio para pruebas."""
+    with Path(catalog_path).open(encoding="utf-8") as catalog_file:
+        catalog = json.load(catalog_file)
+
+    if (
+        not isinstance(catalog, dict)
+        or set(catalog) != {"aviso", "productos"}
+        or not isinstance(catalog["aviso"], str)
+        or "SIMULADOS PARA PRUEBAS" not in catalog["aviso"]
+        or not isinstance(catalog["productos"], list)
+        or not catalog["productos"]
+    ):
+        raise ValueError(
+            "El catálogo debe identificarse como datos simulados y contener productos."
+        )
+
+    products = catalog["productos"]
+    skus: set[str] = set()
+    names: set[str] = set()
+    for product in products:
+        if (
+            not isinstance(product, dict)
+            or set(product)
+            != {
+                "sku",
+                "categoria",
+                "producto",
+                "precio_unitario_prueba_mxn",
+                "cantidad_por_sucursal",
+            }
+            or not isinstance(product["sku"], str)
+            or not SKU_PATTERN.fullmatch(product["sku"])
+            or product["sku"] in skus
+            or not isinstance(product["producto"], str)
+            or not product["producto"].strip()
+            or not isinstance(product["categoria"], str)
+            or product["categoria"] not in ALLOWED_CATEGORIES
+            or product["producto"].casefold() in names
+            or not isinstance(product["cantidad_por_sucursal"], dict)
+            or set(product["cantidad_por_sucursal"]) != set(BRANCHES)
         ):
-            variation = (product_index * 5 + branch_index * 2) % 7
+            raise ValueError(
+                "Cada producto debe tener SKU único, nombre y cantidades para "
+                "las cinco sucursales."
+            )
+
+        try:
+            price = Decimal(product["precio_unitario_prueba_mxn"])
+        except (InvalidOperation, TypeError):
+            raise ValueError("El precio de prueba debe ser un decimal válido.") from None
+        if not price.is_finite() or price <= 0:
+            raise ValueError("El precio de prueba debe ser positivo y finito.")
+
+        for quantity in product["cantidad_por_sucursal"].values():
+            if (
+                not isinstance(quantity, int)
+                or isinstance(quantity, bool)
+                or quantity < 0
+            ):
+                raise ValueError("Las cantidades deben ser enteros no negativos.")
+
+        skus.add(product["sku"])
+        names.add(product["producto"].casefold())
+    return products
+
+
+def build_inventory_documents(
+    catalog_path: str | Path = CATALOG_PATH,
+) -> list[dict[str, Any]]:
+    """Construye documentos repetibles desde el catálogo local de prueba."""
+    documents = []
+    for product in load_inventory_catalog(catalog_path):
+        for branch in BRANCHES:
             documents.append(
                 {
-                    "id": f"{branch}-{product_slug}",
-                    "producto": product,
-                    "cantidad": max(0, base_quantity + branch_offset + variation),
+                    "id": f"{branch}-{product['sku'].lower()}",
+                    "sku": product["sku"],
+                    "categoria": product["categoria"],
+                    "producto": product["producto"],
+                    "cantidad": product["cantidad_por_sucursal"][branch],
                     "branch": branch,
                     "security_id": ["bodega"],
                 }
             )
     return documents
+
+
+def build_shared_inventory_documents(
+    catalog_path: str | Path = CATALOG_PATH,
+) -> list[dict[str, Any]]:
+    """Incluye la cantidad en texto para que Foundry la reciba en sus resultados."""
+    return [
+        {
+            **document,
+            "invoice_content": (
+                f"Inventario: SKU {document['sku']}; producto {document['producto']}; "
+                f"cantidad {document['cantidad']}; sucursal {document['branch']}."
+            ),
+        }
+        for document in build_inventory_documents(catalog_path)
+    ]
 
 
 def main() -> int:
@@ -84,50 +145,80 @@ def main() -> int:
         print("Error: configura AZURE_SEARCH_ENDPOINT.", file=sys.stderr)
         return 1
 
-    index_name = os.getenv(
+    inventory_index_name = os.getenv(
         "AZURE_SEARCH_INVENTORY_INDEX_NAME", "inventario-index"
     )
+    invoice_index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "rio-claro-invoices")
+    synonym_map_name = os.getenv(
+        "AZURE_SEARCH_SYNONYM_MAP_NAME", "producto-sinonimos"
+    )
+    if invoice_index_name == inventory_index_name:
+        print(
+            "Error: los índices de facturas e inventario deben ser distintos.",
+            file=sys.stderr,
+        )
+        return 1
+
     credential = None
     index_client = None
-    search_client = None
+    search_clients = []
     status = 0
 
     try:
         credential = DefaultAzureCredential()
         index_client = SearchIndexClient(endpoint=endpoint, credential=credential)
-        index_client.create_or_update_index(build_inventory_index(index_name))
-
-        search_client = SearchClient(
-            endpoint=endpoint,
-            index_name=index_name,
-            credential=credential,
+        index_client.create_or_update_index(
+            build_index(invoice_index_name, synonym_map_name)
         )
-        documents = build_inventory_documents()
-        results = search_client.merge_or_upload_documents(documents=documents)
-        failures = [
-            result
-            for result in results or []
-            if not getattr(result, "succeeded", False)
-        ]
-        if failures:
-            for failure in failures:
+        index_client.create_or_update_index(
+            build_inventory_index(inventory_index_name)
+        )
+        for target_index in (invoice_index_name, inventory_index_name):
+            search_clients.append(
+                SearchClient(
+                    endpoint=endpoint,
+                    index_name=target_index,
+                    credential=credential,
+                )
+            )
+        inventory_documents = build_inventory_documents()
+        uploads = (
+            (invoice_index_name, build_shared_inventory_documents()),
+            (inventory_index_name, inventory_documents),
+        )
+        for (target_index, documents), search_client in zip(
+            uploads,
+            search_clients,
+        ):
+            results = search_client.merge_or_upload_documents(
+                documents=documents
+            )
+            failures = [
+                result
+                for result in results or []
+                if not getattr(result, "succeeded", False)
+            ]
+            if failures:
+                for failure in failures:
+                    print(
+                        f"Error al cargar {getattr(failure, 'key', 'documento')} "
+                        f"en '{target_index}': "
+                        f"{getattr(failure, 'error_message', 'error de indexación')}",
+                        file=sys.stderr,
+                    )
+                status = 1
+            elif not results:
                 print(
-                    f"Error al cargar {getattr(failure, 'key', 'documento')}: "
-                    f"{getattr(failure, 'error_message', 'error de indexación')}",
+                    f"Error: Azure AI Search no devolvió resultados de carga "
+                    f"para '{target_index}'.",
                     file=sys.stderr,
                 )
-            status = 1
-        elif not results:
-            print(
-                "Error: Azure AI Search no devolvió resultados de carga.",
-                file=sys.stderr,
-            )
-            status = 1
-        else:
-            print(
-                f"{len(documents)} productos cargados o actualizados en "
-                f"'{index_name}' para {len(BRANCHES)} sucursales."
-            )
+                status = 1
+            else:
+                print(
+                    f"{len(documents)} productos cargados o actualizados en "
+                    f"'{target_index}' para {len(BRANCHES)} sucursales."
+                )
     except AzureError as error:
         print(f"Error de Azure AI Search: {error}", file=sys.stderr)
         status = 1
@@ -139,7 +230,7 @@ def main() -> int:
         )
         status = 1
     finally:
-        for resource in (search_client, index_client, credential):
+        for resource in (*search_clients, index_client, credential):
             if resource is not None:
                 try:
                     resource.close()

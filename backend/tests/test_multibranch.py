@@ -292,8 +292,14 @@ class MultiBranchDataTests(unittest.TestCase):
         inventory_fields = {field.name: field for field in inventory_index.fields}
         self.assertTrue(invoice_fields["branch"].filterable)
         self.assertTrue(invoice_fields["document_hash"].filterable)
+        self.assertTrue(invoice_fields["producto"].searchable)
+        self.assertTrue(invoice_fields["sku"].filterable)
+        self.assertTrue(invoice_fields["categoria"].filterable)
+        self.assertTrue(invoice_fields["cantidad"].retrievable)
         self.assertTrue(inventory_fields["branch"].filterable)
         self.assertIn("producto", inventory_fields)
+        self.assertIn("sku", inventory_fields)
+        self.assertIn("categoria", inventory_fields)
         self.assertIn("cantidad", inventory_fields)
         self.assertIn("security_id", inventory_fields)
 
@@ -329,31 +335,43 @@ class MultiBranchDataTests(unittest.TestCase):
         self.assertEqual(client.create_or_update_index.call_count, 2)
         credential.close.assert_called_once()
 
-    def test_agents_use_exact_composite_filter_and_inventory_only_for_bodega(self):
+    def test_agents_use_one_shared_search_index_for_bodega(self):
         self.assertEqual(
             create_agents.SEARCH_FILTER,
             "security_id/any(g: search.in(g, '{{userFilter}}')) and "
             "search.in(branch, '{{branchFilter}}', ',')",
         )
         bodega_tool = create_agents.build_search_tool(
-            "connection", "invoices", "inventario-index", "Bodega"
+            "connection", "invoices"
         )
         analyst_tool = create_agents.build_search_tool(
-            "connection", "invoices", "inventario-index", "Analista"
+            "connection", "invoices"
         )
         self.assertEqual(
             [index.index_name for index in bodega_tool.azure_ai_search.indexes],
-            ["inventario-index"],
+            ["invoices"],
         )
         self.assertEqual(
             [index.index_name for index in analyst_tool.azure_ai_search.indexes],
             ["invoices"],
         )
-        self.assertTrue(
-            all(
-                index.filter == create_agents.SEARCH_FILTER
-                for index in bodega_tool.azure_ai_search.indexes
-            )
+        self.assertEqual(
+            bodega_tool.azure_ai_search.indexes[0].filter,
+            create_agents.SEARCH_FILTER,
+        )
+        bodega_definition = create_agents.build_agent_definition(
+            "Bodega",
+            "gpt-4o",
+            "connection",
+            "invoices",
+        )
+        self.assertEqual(len(bodega_definition.tools), 1)
+        self.assertEqual(
+            [
+                index.index_name
+                for index in bodega_definition.tools[0].azure_ai_search.indexes
+            ],
+            ["invoices"],
         )
 
 

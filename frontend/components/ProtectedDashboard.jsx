@@ -16,14 +16,13 @@ import { BRANCH_OPTIONS, formatBranchNames } from "../lib/branches.js";
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const LOW_STOCK_THRESHOLD = 15;
 
-const SALES_DEMO = [
-  { branch: "guadalajara", city: "Guadalajara", sales: 128400 },
-  { branch: "zapopan", city: "Zapopan", sales: 96250 },
-  { branch: "leon", city: "León", sales: 87900 },
-  { branch: "queretaro", city: "Querétaro", sales: 103600 },
-  { branch: "aguascalientes", city: "Aguascalientes", sales: 74300 },
-];
+function parseInventoryQuantity(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const quantity = Number(value);
+  return Number.isFinite(quantity) ? quantity : null;
+}
 
 function RoleHero({ kicker, title, description, badge = "Espacio de trabajo", titleId }) {
   const reduceMotion = useReducedMotion();
@@ -124,6 +123,67 @@ function InventoryPanel({ token, branches }) {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [isInventoryFormOpen, setIsInventoryFormOpen] = useState(false);
+  const [productName, setProductName] = useState("");
+  const [quantityToAdd, setQuantityToAdd] = useState("1");
+  const [targetBranch, setTargetBranch] = useState(branches[0] || "");
+  const [isSavingInventory, setIsSavingInventory] = useState(false);
+  const [inventorySaveError, setInventorySaveError] = useState("");
+  const [inventorySaveNotice, setInventorySaveNotice] = useState("");
+
+  async function handleInventorySubmit(event) {
+    event.preventDefault();
+    setInventorySaveError("");
+    setInventorySaveNotice("");
+    setIsSavingInventory(true);
+    try {
+      const response = await fetch(`${BACKEND_URL.replace(/\/$/, "")}/api/inventory`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          producto: productName,
+          cantidad: Number(quantityToAdd),
+          branch: targetBranch,
+        }),
+      });
+      let payload = {};
+      try {
+        payload = await response.json();
+      } catch {
+        throw new Error("El servidor devolvió una respuesta inválida.");
+      }
+      if (response.status === 401) {
+        clearSession();
+        window.location.replace("/login");
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(
+          typeof payload.detail === "string"
+            ? payload.detail
+            : "No se pudo guardar el producto.",
+        );
+      }
+      const branchLabel = BRANCH_OPTIONS.find((option) => option.value === payload.branch)?.label || payload.branch;
+      setInventorySaveNotice(
+        `${payload.operation === "increased" ? "Stock actualizado" : "Producto registrado"}: ${payload.producto}. Total en ${branchLabel}: ${Number(payload.cantidad_total).toLocaleString("es-MX")} unidades.`,
+      );
+      setProductName("");
+      setQuantityToAdd("1");
+      setReloadVersion((version) => version + 1);
+    } catch (requestError) {
+      setInventorySaveError(
+        requestError instanceof TypeError
+          ? "No se pudo conectar con el servicio de inventario."
+          : requestError.message,
+      );
+    } finally {
+      setIsSavingInventory(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -174,9 +234,20 @@ function InventoryPanel({ token, branches }) {
       .includes(normalizedSearch),
   );
   const totalUnits = filteredInventory.reduce((total, item) => {
-    const quantity = Number(item.cantidad);
-    return total + (Number.isFinite(quantity) ? quantity : 0);
+    return total + (parseInventoryQuantity(item.cantidad) ?? 0);
   }, 0);
+  const lowStockCount = filteredInventory.filter((item) => {
+    const quantity = parseInventoryQuantity(item.cantidad);
+    return quantity !== null && quantity <= LOW_STOCK_THRESHOLD;
+  }).length;
+  const inventoryGroups = branches
+    .map((branch) => ({
+      branch,
+      items: filteredInventory
+        .filter((item) => item.branch === branch)
+        .sort((first, second) => String(first.producto).localeCompare(String(second.producto), "es-MX")),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <section className="role-dashboard role-dashboard-bodega" aria-labelledby="inventory-title">
@@ -187,11 +258,16 @@ function InventoryPanel({ token, branches }) {
         description={`Consulta existencias autorizadas para: ${formatBranchNames(branches)}.`}
         badge="Datos de inventario"
       />
-      <div className="role-kpi-grid role-kpi-grid-two">
+      <div className="role-kpi-grid">
         <article className="director-kpi-card director-kpi-primary">
           <span className="director-kpi-label">Productos encontrados</span>
           <strong>{isLoading ? "…" : filteredInventory.length}</strong>
-          <span className="director-kpi-footnote">En los resultados visibles</span>
+          <span className="director-kpi-footnote">En la búsqueda actual</span>
+        </article>
+        <article className={`director-kpi-card ${!isLoading && lowStockCount ? "director-kpi-warning" : ""}`}>
+          <span className="director-kpi-label">Stock bajo</span>
+          <strong>{isLoading ? "…" : lowStockCount}</strong>
+          <span className="director-kpi-footnote">≤ {LOW_STOCK_THRESHOLD} unidades</span>
         </article>
         <article className="director-kpi-card">
           <span className="director-kpi-label">Unidades registradas</span>
@@ -203,11 +279,23 @@ function InventoryPanel({ token, branches }) {
         <div className="role-data-card-heading">
           <div>
             <p className="director-kicker">Existencias</p>
-            <h3 id="inventory-results-title">Productos por sucursal</h3>
+            <h3 id="inventory-results-title">Stock por sucursal</h3>
           </div>
-          <button className="button button-secondary" type="button" onClick={() => setReloadVersion((version) => version + 1)} disabled={isLoading}>
-            {isLoading ? "Actualizando…" : "Actualizar"}
-          </button>
+          <div className="inventory-header-actions">
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={() => setIsInventoryFormOpen((open) => !open)}
+              disabled={!branches.length || isSavingInventory}
+              aria-expanded={isInventoryFormOpen}
+              aria-controls="inventory-add-form"
+            >
+              {isInventoryFormOpen ? "Cerrar formulario" : "+ Agregar stock"}
+            </button>
+            <button className="button button-secondary" type="button" onClick={() => setReloadVersion((version) => version + 1)} disabled={isLoading || isSavingInventory}>
+              {isLoading ? "Actualizando…" : "Actualizar"}
+            </button>
+          </div>
         </div>
         <label className="role-search-label" htmlFor="inventory-search">Buscar producto o sucursal</label>
         <input
@@ -218,33 +306,126 @@ function InventoryPanel({ token, branches }) {
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Ej. agua, Guadalajara…"
         />
+        <AnimatePresence initial={false}>
+          {isInventoryFormOpen && (
+            <motion.form
+              className="inventory-add-form"
+              id="inventory-add-form"
+              onSubmit={handleInventorySubmit}
+              initial={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }}
+              animate={{ opacity: 1, height: "auto", y: 0 }}
+              exit={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2 }}
+            >
+              <div className="inventory-form-heading">
+                <div>
+                  <p className="director-kicker">Entrada de inventario</p>
+                  <h4>Registrar producto o agregar unidades</h4>
+                </div>
+                <p>Si el producto ya existe en esa sucursal, la cantidad se sumará al stock actual.</p>
+              </div>
+              <div className="inventory-form-fields">
+                <label>
+                  Producto
+                  <input
+                    type="text"
+                    value={productName}
+                    onChange={(event) => setProductName(event.target.value)}
+                    maxLength={120}
+                    placeholder="Ej. Agua natural 1.5 L"
+                    required
+                    disabled={isSavingInventory}
+                  />
+                </label>
+                <label>
+                  Cantidad a agregar
+                  <input
+                    type="number"
+                    value={quantityToAdd}
+                    onChange={(event) => setQuantityToAdd(event.target.value)}
+                    min="1"
+                    max="1000000"
+                    step="1"
+                    required
+                    disabled={isSavingInventory}
+                  />
+                </label>
+                <label>
+                  Sucursal
+                  <select
+                    value={targetBranch}
+                    onChange={(event) => setTargetBranch(event.target.value)}
+                    required
+                    disabled={isSavingInventory || !branches.length}
+                  >
+                    {BRANCH_OPTIONS.filter((option) => branches.includes(option.value)).map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {inventorySaveError && <p className="error-message" role="alert">{inventorySaveError}</p>}
+              {inventorySaveNotice && <p className="success-message" role="status">{inventorySaveNotice}</p>}
+              <div className="inventory-form-footer">
+                <span>El cambio se guardará en el inventario de Azure.</span>
+                <button className="button button-primary" type="submit" disabled={isSavingInventory || !targetBranch}>
+                  {isSavingInventory ? "Guardando…" : "Guardar inventario"}
+                </button>
+              </div>
+            </motion.form>
+          )}
+        </AnimatePresence>
         {isLoading ? (
           <p className="role-data-feedback" role="status">Cargando inventario…</p>
         ) : error ? (
           <p className="error-message role-data-feedback" role="alert">{error}</p>
-        ) : filteredInventory.length ? (
-          <ul className="inventory-results">
-            {filteredInventory.map((item, index) => (
-              <motion.li
-                key={`${item.producto}-${item.branch}-${index}`}
-                layout
-                initial={{ opacity: reduceMotion ? 1 : 0 }}
-                animate={{ opacity: 1 }}
-              >
-                <span className="inventory-product-mark" aria-hidden="true">
-                  {String(item.producto || "?").slice(0, 1).toLocaleUpperCase("es-MX")}
-                </span>
-                <div className="inventory-item-copy">
-                  <strong>{item.producto}</strong>
-                  <span>{BRANCH_OPTIONS.find((option) => option.value === item.branch)?.label || item.branch}</span>
-                </div>
-                <span className="inventory-quantity">
-                  <strong>{(Number.isFinite(Number(item.cantidad)) ? Number(item.cantidad) : 0).toLocaleString("es-MX")}</strong>
-                  <small>unidades</small>
-                </span>
-              </motion.li>
+        ) : inventoryGroups.length ? (
+          <div className="inventory-branch-groups">
+            {inventoryGroups.map(({ branch, items }) => (
+              <section className="inventory-branch-group" key={branch} aria-label={`Stock de ${BRANCH_OPTIONS.find((option) => option.value === branch)?.label || branch}`}>
+                <header className="inventory-branch-heading">
+                  <div className="inventory-branch-title">
+                    <span className="inventory-branch-icon" aria-hidden="true">⌖</span>
+                    <h4>{BRANCH_OPTIONS.find((option) => option.value === branch)?.label || branch}</h4>
+                  </div>
+                  <span className="inventory-branch-count">
+                    {items.length} {items.length === 1 ? "producto" : "productos"}
+                  </span>
+                </header>
+                <ul className="inventory-results">
+                  {items.map((item, index) => {
+                    const quantity = parseInventoryQuantity(item.cantidad);
+                    const hasQuantity = quantity !== null;
+                    const isOutOfStock = hasQuantity && quantity <= 0;
+                    const isLowStock = hasQuantity && quantity > 0 && quantity <= LOW_STOCK_THRESHOLD;
+                    return (
+                      <motion.li
+                        className={`inventory-stock-item ${isOutOfStock ? "is-out-of-stock" : isLowStock ? "is-low-stock" : ""}`}
+                        key={`${item.producto}-${branch}-${index}`}
+                        layout
+                        initial={{ opacity: reduceMotion ? 1 : 0 }}
+                        animate={{ opacity: 1 }}
+                      >
+                        <span className="inventory-product-mark" aria-hidden="true">
+                          {String(item.producto || "?").slice(0, 1).toLocaleUpperCase("es-MX")}
+                        </span>
+                        <div className="inventory-item-copy">
+                          <strong>{item.producto}</strong>
+                        </div>
+                        <span className="inventory-quantity">
+                          <strong>{hasQuantity ? quantity.toLocaleString("es-MX") : "—"}</strong>
+                          <small>unidades</small>
+                        </span>
+                        <span className={`inventory-stock-badge ${isOutOfStock ? "is-empty" : isLowStock ? "is-low" : "is-available"}`}>
+                          {isOutOfStock ? "Agotado" : isLowStock ? "Stock bajo" : hasQuantity ? "Disponible" : "Sin dato"}
+                        </span>
+                      </motion.li>
+                    );
+                  })}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
         ) : (
           <p className="role-data-feedback">
             {inventory.length
@@ -253,25 +434,101 @@ function InventoryPanel({ token, branches }) {
           </p>
         )}
       </section>
-      <p className="role-data-note">Los resultados se consultan en tiempo real desde el índice y permanecen limitados a las sucursales autorizadas.</p>
+      <p className="role-data-note">Stock bajo: {LOW_STOCK_THRESHOLD} unidades o menos. Los resultados se consultan en el índice en tiempo real y permanecen limitados a las sucursales autorizadas.</p>
     </section>
   );
 }
 
-function DirectorPanel({ branches }) {
+function DirectorPanel({ token, branches, onUnauthorized }) {
   const reduceMotion = useReducedMotion();
   const [selectedBranches, setSelectedBranches] = useState(branches);
+  const [report, setReport] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [reloadVersion, setReloadVersion] = useState(0);
   const availableBranches = BRANCH_OPTIONS.filter(({ value }) =>
     branches.includes(value),
   );
-  const rows = SALES_DEMO.filter(
-    (sales) => branches.includes(sales.branch) && selectedBranches.includes(sales.branch),
-  ).sort((first, second) => second.sales - first.sales);
-  const totalSales = rows.reduce((total, row) => total + row.sales, 0);
-  const averageSales = rows.length ? Math.round(totalSales / rows.length) : 0;
-  const topBranch = rows[0];
-  const maxSales = topBranch?.sales || 1;
-  const formatSales = (amount) => `$${amount.toLocaleString("en-US")}`;
+  useEffect(() => {
+    setSelectedBranches((current) =>
+      current.filter((branch) => branches.includes(branch)),
+    );
+  }, [branches]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadReport() {
+      setIsLoading(true);
+      setError("");
+      try {
+        const response = await fetch(
+          `${BACKEND_URL.replace(/\/$/, "")}/api/director/sales-report`,
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+        if (response.status === 401) {
+          clearSession();
+          onUnauthorized?.();
+          return;
+        }
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(
+            typeof payload.detail === "string"
+              ? payload.detail
+              : "No se pudo consultar el reporte de facturas.",
+          );
+        }
+        if (active) setReport(payload);
+      } catch (requestError) {
+        if (active) {
+          setError(
+            requestError instanceof TypeError
+              ? "No se pudo conectar con el servicio de reportes."
+              : requestError.message,
+          );
+        }
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    }
+    loadReport();
+    return () => {
+      active = false;
+    };
+  }, [onUnauthorized, reloadVersion, token]);
+
+  const rows = (report?.branches || [])
+    .filter(
+      (row) =>
+        branches.includes(row.branch) &&
+        selectedBranches.includes(row.branch),
+    )
+    .map((row) => ({
+      ...row,
+      city:
+        BRANCH_OPTIONS.find((option) => option.value === row.branch)?.label ||
+        row.branch,
+    }))
+    .sort((first, second) => second.total - first.total);
+  const totalSales = rows.reduce((total, row) => total + row.total, 0);
+  const invoiceCount = rows.reduce(
+    (total, row) => total + row.invoice_count,
+    0,
+  );
+  const invoicesWithTotal = rows.reduce(
+    (total, row) => total + row.invoices_with_total,
+    0,
+  );
+  const topBranch = rows.find((row) => row.invoices_with_total > 0);
+  const maxSales = topBranch?.total || 1;
+  const formatSales = (amount) =>
+    new Intl.NumberFormat("es-MX", {
+      style: "currency",
+      currency: report?.currency || "MXN",
+    }).format(amount);
 
   return (
     <section className="director-dashboard" aria-labelledby="director-dashboard-title">
@@ -284,18 +541,23 @@ function DirectorPanel({ branches }) {
         <div>
           <p className="director-kicker">Panel directivo</p>
           <h2 id="director-dashboard-title">Resumen ejecutivo</h2>
-          <p>Ventas de demostración para las sucursales que tienes autorizadas.</p>
+          <p>Importes y conteos agregados a partir de las facturas procesadas en las sucursales autorizadas.</p>
         </div>
-        <span className="director-demo-badge">
-          <span aria-hidden="true" /> Datos de demostración
-        </span>
+        <button
+          className="button button-secondary"
+          type="button"
+          onClick={() => setReloadVersion((version) => version + 1)}
+          disabled={isLoading}
+        >
+          {isLoading ? "Actualizando..." : "Actualizar reporte"}
+        </button>
       </motion.header>
 
       <div className="director-filter-panel">
         <BranchMultiSelect
           id="director-branches"
           label="Sucursales del reporte"
-          description="Selecciona una o más sucursales autorizadas para comparar sus ventas."
+          description="Selecciona una o más sucursales autorizadas para comparar los importes de sus facturas."
           branches={availableBranches}
           selectedBranches={selectedBranches}
           onChange={setSelectedBranches}
@@ -303,9 +565,14 @@ function DirectorPanel({ branches }) {
         />
       </div>
 
-      {rows.length === 0 ? (
+      {error && <p className="error-message" role="alert">{error}</p>}
+      {isLoading ? (
         <div className="director-empty-state" role="status">
-          Selecciona al menos una sucursal para ver el resumen.
+          Consultando facturas procesadas...
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="director-empty-state" role="status">
+          Selecciona al menos una sucursal autorizada para ver el resumen.
         </div>
       ) : (
         <>
@@ -317,10 +584,10 @@ function DirectorPanel({ branches }) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: reduceMotion ? 0 : 0.24, delay: reduceMotion ? 0 : 0.04 }}
             >
-              <span className="director-kpi-label">Ventas totales</span>
+              <span className="director-kpi-label">Importe facturado</span>
               <strong>{formatSales(totalSales)}</strong>
               <span className="director-kpi-footnote">
-                {rows.length} {rows.length === 1 ? "sucursal seleccionada" : "sucursales seleccionadas"}
+                {invoicesWithTotal} de {invoiceCount} facturas con importe identificado
               </span>
             </motion.article>
             <motion.article
@@ -330,9 +597,11 @@ function DirectorPanel({ branches }) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: reduceMotion ? 0 : 0.24, delay: reduceMotion ? 0 : 0.1 }}
             >
-              <span className="director-kpi-label">Promedio por sucursal</span>
-              <strong>{formatSales(averageSales)}</strong>
-              <span className="director-kpi-footnote">Promedio de la selección actual</span>
+              <span className="director-kpi-label">Facturas procesadas</span>
+              <strong>{invoiceCount.toLocaleString("es-MX")}</strong>
+              <span className="director-kpi-footnote">
+                {rows.length} sucursales seleccionadas
+              </span>
             </motion.article>
             <motion.article
               className="director-kpi-card"
@@ -342,8 +611,10 @@ function DirectorPanel({ branches }) {
               transition={{ duration: reduceMotion ? 0 : 0.24, delay: reduceMotion ? 0 : 0.16 }}
             >
               <span className="director-kpi-label">Mayor venta</span>
-              <strong>{topBranch.city}</strong>
-              <span className="director-kpi-footnote">{formatSales(topBranch.sales)}</span>
+              <strong>{topBranch?.city || "Sin datos"}</strong>
+              <span className="director-kpi-footnote">
+                {topBranch ? formatSales(topBranch.total) : "Sin importes identificados"}
+              </span>
             </motion.article>
           </div>
 
@@ -354,10 +625,10 @@ function DirectorPanel({ branches }) {
                   <p className="director-kicker">Comparativo</p>
                   <h3 id="director-performance-title">Ventas por sucursal</h3>
                 </div>
-                <span className="director-period-label">Vista actual</span>
+                <span className="director-period-label">Histórico · MXN</span>
               </div>
               <ol className="director-performance-list">
-                {rows.map(({ branch, city, sales }, index) => (
+                {rows.map(({ branch, city, total, invoice_count, invoices_with_total }, index) => (
                   <motion.li
                     key={branch}
                     layout
@@ -368,35 +639,40 @@ function DirectorPanel({ branches }) {
                     <div className="director-performance-topline">
                       <span className="director-rank">{String(index + 1).padStart(2, "0")}</span>
                       <span className="director-branch-name">{city}</span>
-                      <strong>{formatSales(sales)}</strong>
+                      <strong>{formatSales(total)}</strong>
                     </div>
                     <div
                       className="director-bar-track"
                       role="img"
-                      aria-label={`${city}: ${formatSales(sales)}`}
+                      aria-label={`${city}: ${formatSales(total)} de ${invoices_with_total} facturas con importe`}
                     >
                       <motion.span
                         className="director-bar-fill"
                         initial={{ width: 0 }}
-                        animate={{ width: `${(sales / maxSales) * 100}%` }}
+                        animate={{ width: `${(total / maxSales) * 100}%` }}
                         transition={{ duration: reduceMotion ? 0 : 0.55, delay: reduceMotion ? 0 : 0.12 + index * 0.05 }}
                       />
                     </div>
+                    <span className="director-kpi-footnote">
+                      {invoice_count} facturas procesadas · {invoices_with_total} con importe
+                    </span>
                   </motion.li>
                 ))}
               </ol>
             </section>
 
-            <aside className="director-highlights-card" aria-label="Hallazgo destacado">
-              <span className="director-highlight-icon" aria-hidden="true">↗</span>
-              <p className="director-kicker">Sucursal destacada</p>
-              <h3>{topBranch.city}</h3>
-              <strong>{formatSales(topBranch.sales)}</strong>
-              <p>Registra la cifra más alta dentro de las sucursales seleccionadas.</p>
-            </aside>
+            {topBranch && (
+              <aside className="director-highlights-card" aria-label="Hallazgo destacado">
+                <span className="director-highlight-icon" aria-hidden="true">↗</span>
+                <p className="director-kicker">Mayor importe facturado</p>
+                <h3>{topBranch.city}</h3>
+                <strong>{formatSales(topBranch.total)}</strong>
+                <p>Importe sumado desde {topBranch.invoices_with_total} facturas con total identificado.</p>
+              </aside>
+            )}
           </div>
           <p className="director-data-note">
-            Las cifras son ilustrativas y no representan ventas operativas reales.
+            Suma histórica de facturas indexadas y aprobadas. Es importe bruto facturado, no ventas netas; las facturas pendientes o declinadas se excluyen.
           </p>
         </>
       )}
@@ -778,7 +1054,11 @@ export default function ProtectedDashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] }}
           >
-            <DirectorPanel branches={user.branches || []} />
+            <DirectorPanel
+              token={token}
+              branches={user.branches || []}
+              onUnauthorized={returnToLogin}
+            />
             <div className="director-chat-widget">
               <AnimatePresence>
                 {isDirectorChatOpen && (

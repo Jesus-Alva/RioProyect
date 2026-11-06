@@ -1,3 +1,5 @@
+# Instalacion Local del Proyecto (Step to Step) 
+
 # Levantar servicios
 
 ## Inicializar el entorno virtual Python
@@ -44,6 +46,11 @@ El frontend guarda el JWT en `localStorage`; por ello, despliega solo sobre
 orígenes HTTPS y evita insertar contenido HTML no confiable para reducir el
 riesgo de exposición ante XSS.
 
+El dashboard de Directivo consulta `GET /api/director/sales-report` y agrupa
+los importes y conteos de las facturas indexadas o aprobadas por sucursal
+autorizada. El total representa importes brutos extraídos de facturas, no ventas
+netas; excluye facturas pendientes de revisión y declinadas.
+
 ## Frontend
 
 Copia `frontend\.env.example` a `frontend\.env.local`, instala dependencias y
@@ -64,6 +71,7 @@ python -m pip install -r backend\requirements.txt
 python backend\scripts\create_admin.py
 ```
 
+# Credenciales Actuales del sistema
 Credenciales para administrador
 - Correo: admin@gmail.com
 - Password: 123456789pass

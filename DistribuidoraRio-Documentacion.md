@@ -52,7 +52,7 @@ debe mostrar que la IA apoya y que siempre hay una persona que revisa.
 ### Funcionalidades Transversales de IA Responsable (UI/UX)
 Para cumplir con los criterios del examen AI-901, la interfaz web incluirá:
 - **Transparencia:** Aviso visible en el chat: *"Estás interactuando con un asistente de IA. Las respuestas se basan en documentos oficiales"*.
-- **Transparencia (Fuentes):** Cada respuesta del agente incluirá una cita al documento del cual extrajo la información (ej. `Fuente: factura_001.pdf`).
+- **Transparencia (Fuentes):** Cada respuesta del agente incluirá una cita al documento del cual extrajo la información (ej. `Fuente: factura_leon_01.pdf`).
 - **Rendición de cuentas (Human-in-the-loop):** En el módulo de Laura, las facturas con confianza menor a 0.8 se mostrarán en un panel de "Revisión Manual" requiriendo su aprobación antes de registrarse.
 - **Equidad:** El agente consulta un índice centralizado, garantizando que las respuestas no favorezcan a ninguna sucursal por tener "mejores datos".
 ### Modulo Directivos:

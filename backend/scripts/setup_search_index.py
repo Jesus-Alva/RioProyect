@@ -84,6 +84,34 @@ def build_index(index_name: str, synonym_map_name: str) -> SearchIndex:
             synonym_map_names=[synonym_map_name],
             retrievable=True,
         ),
+        SearchField(
+            name="producto",
+            type=SearchFieldDataType.String,
+            searchable=True,
+            filterable=True,
+            retrievable=True,
+        ),
+        SearchField(
+            name="sku",
+            type=SearchFieldDataType.String,
+            searchable=True,
+            filterable=True,
+            retrievable=True,
+        ),
+        SearchField(
+            name="categoria",
+            type=SearchFieldDataType.String,
+            searchable=True,
+            filterable=True,
+            retrievable=True,
+        ),
+        SearchField(
+            name="cantidad",
+            type=SearchFieldDataType.Double,
+            filterable=True,
+            sortable=True,
+            retrievable=True,
+        ),
     ]
     return SearchIndex(name=index_name, fields=fields)
 
@@ -99,6 +127,20 @@ def build_inventory_index(index_name: str) -> SearchIndex:
         ),
         SearchField(
             name="producto",
+            type=SearchFieldDataType.String,
+            searchable=True,
+            filterable=True,
+            retrievable=True,
+        ),
+        SearchField(
+            name="sku",
+            type=SearchFieldDataType.String,
+            searchable=True,
+            filterable=True,
+            retrievable=True,
+        ),
+        SearchField(
+            name="categoria",
             type=SearchFieldDataType.String,
             searchable=True,
             filterable=True,

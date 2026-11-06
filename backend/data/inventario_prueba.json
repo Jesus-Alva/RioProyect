@@ -1,0 +1,200 @@
+{
+  "aviso": "DATOS SIMULADOS PARA PRUEBAS. No representan existencias ni precios reales de la empresa.",
+  "productos": [
+    {
+      "sku": "PROD-001",
+      "categoria": "limpieza",
+      "producto": "Cloro 1 L",
+      "precio_unitario_prueba_mxn": "35.50",
+      "cantidad_por_sucursal": {
+        "guadalajara": 48,
+        "zapopan": 71,
+        "leon": 39,
+        "queretaro": 62,
+        "aguascalientes": 55
+      }
+    },
+    {
+      "sku": "PROD-002",
+      "categoria": "limpieza",
+      "producto": "Detergente en polvo 1 kg",
+      "precio_unitario_prueba_mxn": "42.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 36,
+        "zapopan": 52,
+        "leon": 44,
+        "queretaro": 30,
+        "aguascalientes": 41
+      }
+    },
+    {
+      "sku": "PROD-003",
+      "categoria": "limpieza",
+      "producto": "Jabón líquido para manos 5 L",
+      "precio_unitario_prueba_mxn": "125.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 24,
+        "zapopan": 33,
+        "leon": 27,
+        "queretaro": 18,
+        "aguascalientes": 29
+      }
+    },
+    {
+      "sku": "PROD-004",
+      "categoria": "limpieza",
+      "producto": "Desinfectante multiusos 1 L",
+      "precio_unitario_prueba_mxn": "55.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 110,
+        "zapopan": 95,
+        "leon": 120,
+        "queretaro": 85,
+        "aguascalientes": 70
+      }
+    },
+    {
+      "sku": "PROD-005",
+      "categoria": "limpieza",
+      "producto": "Limpiador de pisos aroma lavanda 2 L",
+      "precio_unitario_prueba_mxn": "68.50",
+      "cantidad_por_sucursal": {
+        "guadalajara": 65,
+        "zapopan": 40,
+        "leon": 55,
+        "queretaro": 72,
+        "aguascalientes": 48
+      }
+    },
+    {
+      "sku": "PROD-006",
+      "categoria": "limpieza",
+      "producto": "Limpiador de vidrios y superficies 500 ml",
+      "precio_unitario_prueba_mxn": "38.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 85,
+        "zapopan": 92,
+        "leon": 78,
+        "queretaro": 60,
+        "aguascalientes": 81
+      }
+    },
+    {
+      "sku": "PROD-007",
+      "categoria": "higiene",
+      "producto": "Papel higiénico institucional (4 rollos)",
+      "precio_unitario_prueba_mxn": "48.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 250,
+        "zapopan": 310,
+        "leon": 220,
+        "queretaro": 180,
+        "aguascalientes": 275
+      }
+    },
+    {
+      "sku": "PROD-008",
+      "categoria": "higiene",
+      "producto": "Gel antibacterial 1 L",
+      "precio_unitario_prueba_mxn": "89.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 45,
+        "zapopan": 60,
+        "leon": 38,
+        "queretaro": 52,
+        "aguascalientes": 41
+      }
+    },
+    {
+      "sku": "PROD-009",
+      "categoria": "limpieza",
+      "producto": "Limpiador desengrasante industrial 1 L",
+      "precio_unitario_prueba_mxn": "75.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 90,
+        "zapopan": 75,
+        "leon": 110,
+        "queretaro": 65,
+        "aguascalientes": 80
+      }
+    },
+    {
+      "sku": "PROD-010",
+      "categoria": "limpieza",
+      "producto": "Aromatizante ambiental aerosol 400 ml",
+      "precio_unitario_prueba_mxn": "45.50",
+      "cantidad_por_sucursal": {
+        "guadalajara": 130,
+        "zapopan": 115,
+        "leon": 95,
+        "queretaro": 140,
+        "aguascalientes": 105
+      }
+    },
+    {
+      "sku": "PROD-011",
+      "categoria": "higiene",
+      "producto": "Suavizante de telas 3 L",
+      "precio_unitario_prueba_mxn": "95.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 33,
+        "zapopan": 28,
+        "leon": 41,
+        "queretaro": 25,
+        "aguascalientes": 37
+      }
+    },
+    {
+      "sku": "PROD-012",
+      "categoria": "limpieza",
+      "producto": "Cloro en polvo (Hipoclorito de calcio) 1 kg",
+      "precio_unitario_prueba_mxn": "110.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 50,
+        "zapopan": 45,
+        "leon": 60,
+        "queretaro": 35,
+        "aguascalientes": 42
+      }
+    },
+    {
+      "sku": "PROD-013",
+      "categoria": "limpieza",
+      "producto": "Sanitizante para frutas y verduras 1 L",
+      "precio_unitario_prueba_mxn": "62.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 78,
+        "zapopan": 82,
+        "leon": 65,
+        "queretaro": 90,
+        "aguascalientes": 71
+      }
+    },
+    {
+      "sku": "PROD-014",
+      "categoria": "higiene",
+      "producto": "Jabón de tocador (paquete con 3 piezas)",
+      "precio_unitario_prueba_mxn": "35.00",
+      "cantidad_por_sucursal": {
+        "guadalajara": 150,
+        "zapopan": 180,
+        "leon": 135,
+        "queretaro": 160,
+        "aguascalientes": 145
+      }
+    },
+    {
+      "sku": "PROD-015",
+      "categoria": "limpieza",
+      "producto": "Fibra para trastes industrial (paquete 10 pzas)",
+      "precio_unitario_prueba_mxn": "28.50",
+      "cantidad_por_sucursal": {
+        "guadalajara": 200,
+        "zapopan": 185,
+        "leon": 160,
+        "queretaro": 210,
+        "aguascalientes": 190
+      }
+    }
+  ]
+}

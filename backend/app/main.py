@@ -1,10 +1,13 @@
 """API FastAPI para conversaciones seguras con agentes de Azure AI Foundry."""
 
 from contextlib import asynccontextmanager
+import hashlib
 import logging
+import math
 import os
 from functools import lru_cache
 from typing import Any, Literal
+import unicodedata
 from urllib.parse import quote
 
 from dotenv import load_dotenv
@@ -12,6 +15,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from azure.ai.projects import AIProjectClient
@@ -19,8 +23,8 @@ from azure.identity import DefaultAzureCredential
 from azure.search.documents import SearchClient
 
 from backend.app.auth import authenticate_user, router as auth_router
-from backend.app.branches import normalize_branches
-from backend.app.database import get_db, initialize_database
+from backend.app.branches import BRANCHES, normalize_branches
+from backend.app.database import InvoiceUpload, get_db, initialize_database
 from backend.app.invoice_upload import (
     MAX_UPLOAD_BYTES,
     decide_invoice_review,
@@ -84,6 +88,24 @@ class ChatRequest(BaseModel):
         return normalize_branches(value)
 
 
+class InventoryMutationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    producto: str = Field(min_length=1, max_length=120)
+    cantidad: int = Field(strict=True, gt=0, le=1_000_000)
+    branch: Branch
+
+    @field_validator("producto", mode="before")
+    @classmethod
+    def normalize_product_name(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError("El nombre del producto debe ser texto.")
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("Escribe el nombre del producto.")
+        return normalized
+
+
 @lru_cache(maxsize=1)
 def get_project_client() -> AIProjectClient:
     endpoint = os.getenv("FOUNDRY_PROJECT_ENDPOINT")
@@ -113,6 +135,62 @@ def build_branch_filter(role: str, branches: list[str]) -> str:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/director/sales-report")
+def director_sales_report(
+    user: dict[str, Any] = Depends(authenticate_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if user["role"] != "directivo":
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Directivo puede consultar el reporte de facturas.",
+        )
+
+    authorized_branches = normalize_branches(user["branches"])
+    aggregates = db.execute(
+        select(
+            InvoiceUpload.branch,
+            func.count(InvoiceUpload.id),
+            func.count(InvoiceUpload.invoice_total),
+            func.sum(InvoiceUpload.invoice_total),
+        )
+        .where(
+            InvoiceUpload.branch.in_(authorized_branches),
+            InvoiceUpload.status.in_(("indexed", "approved")),
+        )
+        .group_by(InvoiceUpload.branch)
+    ).all()
+    totals_by_branch = {
+        branch: {
+            "invoice_count": invoice_count,
+            "invoices_with_total": invoices_with_total,
+            "total": float(total or 0),
+        }
+        for branch, invoice_count, invoices_with_total, total in aggregates
+    }
+
+    return {
+        "currency": "MXN",
+        "period": "all_time",
+        "included_statuses": ["indexed", "approved"],
+        "branches": [
+            {
+                "branch": branch,
+                **totals_by_branch.get(
+                    branch,
+                    {
+                        "invoice_count": 0,
+                        "invoices_with_total": 0,
+                        "total": 0,
+                    },
+                ),
+            }
+            for branch in BRANCHES
+            if branch in authorized_branches
+        ],
+    }
 
 
 @app.post("/api/invoices/upload")
@@ -275,6 +353,175 @@ def inventory(
             credential.close()
 
     return {"branches": user["branches"], "items": items}
+
+
+def normalize_inventory_product(product: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", product.casefold())
+    without_accents = "".join(
+        character
+        for character in decomposed
+        if not unicodedata.combining(character)
+    )
+    return " ".join(without_accents.split())
+
+
+def find_inventory_product(
+    client: SearchClient,
+    branch: str,
+    normalized_product: str,
+) -> dict[str, Any] | None:
+    results = client.search(
+        search_text="*",
+        filter=build_branch_filter("bodega", [branch]),
+        select=["id", "producto", "cantidad", "branch", "security_id"],
+        top=1000,
+    )
+    return next(
+        (
+            dict(result)
+            for result in results
+            if result.get("branch") == branch
+            and normalize_inventory_product(str(result.get("producto", "")))
+            == normalized_product
+        ),
+        None,
+    )
+
+
+@app.post("/api/inventory")
+def mutate_inventory(
+    payload: InventoryMutationRequest,
+    user: dict[str, Any] = Depends(authenticate_user),
+) -> dict[str, Any]:
+    if user["role"] != "bodega":
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Bodega puede registrar o actualizar inventario.",
+        )
+    if payload.branch not in user["branches"]:
+        raise HTTPException(
+            status_code=403,
+            detail="La sucursal no está asignada a tu cuenta.",
+        )
+
+    endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
+    if not endpoint:
+        raise HTTPException(
+            status_code=502,
+            detail="No fue posible actualizar el inventario.",
+        )
+
+    inventory_index_name = os.getenv(
+        "AZURE_SEARCH_INVENTORY_INDEX_NAME", "inventario-index"
+    )
+    invoice_index_name = os.getenv(
+        "AZURE_SEARCH_INDEX_NAME", "rio-claro-invoices"
+    )
+    index_names = tuple(dict.fromkeys((inventory_index_name, invoice_index_name)))
+    credential = None
+    clients: dict[str, SearchClient] = {}
+    written_updates: list[tuple[str, dict[str, Any], dict[str, Any] | None]] = []
+    rollback_failed = False
+    try:
+        credential = DefaultAzureCredential()
+        for index_name in index_names:
+            clients[index_name] = SearchClient(
+                endpoint=endpoint,
+                index_name=index_name,
+                credential=credential,
+            )
+
+        normalized_product = normalize_inventory_product(payload.producto)
+        existing_by_index = {
+            index_name: find_inventory_product(
+                client, payload.branch, normalized_product
+            )
+            for index_name, client in clients.items()
+        }
+        source_document = (
+            existing_by_index.get(inventory_index_name)
+            or next(
+                (document for document in existing_by_index.values() if document),
+                None,
+            )
+        )
+        current_quantity = float(source_document.get("cantidad", 0) or 0) if source_document else 0.0
+        if not math.isfinite(current_quantity):
+            raise ValueError("La cantidad registrada para el producto no es válida.")
+        updated_quantity = current_quantity + payload.cantidad
+        product_name = (
+            str(source_document.get("producto", payload.producto))
+            if source_document
+            else payload.producto
+        )
+        product_key = hashlib.sha256(normalized_product.encode("utf-8")).hexdigest()[:24]
+        fallback_id = f"{payload.branch}-{product_key}"
+
+        try:
+            for index_name, client in clients.items():
+                existing = existing_by_index[index_name]
+                document = {
+                    "id": str(existing.get("id")) if existing else fallback_id,
+                    "producto": product_name,
+                    "cantidad": updated_quantity,
+                    "branch": payload.branch,
+                    "security_id": ["bodega"],
+                }
+                results = client.merge_or_upload_documents(documents=[document])
+                if not results or not results[0].succeeded:
+                    raise RuntimeError(
+                        f"Azure AI Search no confirmó la actualización de {index_name}."
+                    )
+                written_updates.append((index_name, document, existing))
+        except Exception:
+            for index_name, document, existing in reversed(written_updates):
+                try:
+                    if existing:
+                        clients[index_name].merge_documents(
+                            documents=[
+                                {
+                                    "id": existing["id"],
+                                    "cantidad": existing.get("cantidad", 0),
+                                }
+                            ]
+                        )
+                    else:
+                        clients[index_name].delete_documents(
+                            documents=[{"id": document["id"]}]
+                        )
+                except Exception:
+                    rollback_failed = True
+                    logger.exception(
+                        "No fue posible revertir una escritura parcial de inventario en %s.",
+                        index_name,
+                    )
+            raise
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Falló la actualización del inventario en Azure AI Search.")
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "La actualización quedó incompleta entre los índices. Actualiza el inventario antes de volver a intentarlo."
+                if rollback_failed
+                else "No fue posible actualizar el inventario. Inténtalo de nuevo."
+            ),
+        ) from None
+    finally:
+        for client in clients.values():
+            client.close()
+        if credential is not None:
+            credential.close()
+
+    operation = "increased" if source_document else "created"
+    return {
+        "operation": operation,
+        "producto": product_name,
+        "cantidad_agregada": payload.cantidad,
+        "cantidad_total": updated_quantity,
+        "branch": payload.branch,
+    }
 
 
 @app.post("/api/chat")

@@ -37,6 +37,9 @@ inicial de administración de forma interactiva:
 
 Después, inicia sesión con esa cuenta para aprobar solicitudes y asignar uno
 de los cinco roles operativos. `admin` no es un filtro de búsqueda ni un agente.
+El registro solicita nombre de usuario único, correo, rol y sucursal; el nombre
+de usuario se muestra en el panel administrativo. El inicio de sesión sigue
+usando el correo electrónico.
 El frontend guarda el JWT en `localStorage`; por ello, despliega solo sobre
 orígenes HTTPS y evita insertar contenido HTML no confiable para reducir el
 riesgo de exposición ante XSS.

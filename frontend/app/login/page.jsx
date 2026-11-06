@@ -45,6 +45,7 @@ export default function LoginPage() {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
   const [mode, setMode] = useState("login");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -89,6 +90,7 @@ export default function LoginPage() {
     try {
       if (mode === "register") {
         const result = await submitAuthRequest("/api/auth/register", {
+          username,
           email,
           password,
           role: requestedRole,
@@ -96,6 +98,7 @@ export default function LoginPage() {
         });
         setPassword("");
         setConfirmation("");
+        setUsername("");
         setShowPassword(false);
         setShowConfirmation(false);
         setMode("login");
@@ -213,6 +216,24 @@ export default function LoginPage() {
           </p>
         )}
         <form className="auth-form" onSubmit={handleSubmit}>
+          {isRegistering && (
+            <>
+              <label htmlFor="auth-username">Nombre de usuario</label>
+              <input
+                id="auth-username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                minLength={3}
+                maxLength={32}
+                pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}"
+                title="Usa de 3 a 32 letras, números, punto, guion o guion bajo."
+                required
+              />
+            </>
+          )}
           <label htmlFor="auth-email">Correo electrónico</label>
           <input
             id="auth-email"

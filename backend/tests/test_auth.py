@@ -50,11 +50,16 @@ class AuthenticationTests(unittest.TestCase):
             session.commit()
 
     def register(
-        self, email="staff@example.com", role="analista", branch="guadalajara"
+        self,
+        email="staff@example.com",
+        role="analista",
+        branch="guadalajara",
+        username="staff_user",
     ):
         return self.client.post(
             "/api/auth/register",
             json={
+                "username": username,
                 "email": email,
                 "password": "Valid-password-123!",
                 "role": role,
@@ -112,6 +117,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         payload = response.json()
         self.assertNotIn("access_token", payload)
+        self.assertEqual(payload["user"]["username"], "staff_user")
         self.assertEqual(payload["user"]["email"], "staff@example.com")
         self.assertEqual(payload["user"]["requested_role"], "analista")
         self.assertEqual(payload["user"]["requested_branches"], ["guadalajara"])
@@ -146,6 +152,28 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(self.register(role="admin").status_code, 422)
         self.assertEqual(self.register().status_code, 201)
         self.assertEqual(self.register().status_code, 409)
+
+    def test_registration_normalizes_and_uniquely_validates_username(self):
+        response = self.register(username="  Staff.Name_1 ")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["user"]["username"], "staff.name_1")
+
+        duplicate = self.register(
+            email="another@example.com",
+            username="STAFF.NAME_1",
+        )
+        self.assertEqual(duplicate.status_code, 409)
+
+    def test_registration_rejects_invalid_username(self):
+        for username in ("ab", "starts with space", "_starts", "invalid/name"):
+            with self.subTest(username=username):
+                self.assertEqual(
+                    self.register(
+                        email=f"{username.replace(' ', '')}@example.com",
+                        username=username,
+                    ).status_code,
+                    422,
+                )
 
     def test_pending_user_cannot_login_until_admin_assigns_role(self):
         registration = self.register()
@@ -490,8 +518,8 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(assigned.json()["branches"], ["zapopan", "leon"])
         self.assertEqual(subset.status_code, 200)
         self.assertEqual(subset.json()["branches"], ["leon"])
-        self.assertEqual(created[0]["branches"], ["zapopan", "leon"])
-        self.assertEqual(created[1]["branches"], ["leon"])
+        self.assertEqual(created[0]["branches"], "zapopan,leon")
+        self.assertEqual(created[1]["branches"], "leon")
         self.assertEqual(
             [
                 request["extra_body"]["structured_inputs"]["branchFilter"]
@@ -584,7 +612,13 @@ class AuthenticationTests(unittest.TestCase):
             [request["extra_body"]["structured_inputs"]["branchFilter"] for request in requests],
             ["guadalajara,zapopan"] * 5,
         )
-        self.assertNotIn("admin", [metadata["role"] for _, metadata in created_conversations])
+        self.assertNotIn(
+            "admin", [metadata["role"] for _, metadata in created_conversations]
+        )
+        self.assertEqual(
+            [metadata["branches"] for _, metadata in created_conversations],
+            ["guadalajara,zapopan"] * 5,
+        )
 
     def test_cors_preflight_allows_admin_permission_updates(self):
         response = self.client.options(

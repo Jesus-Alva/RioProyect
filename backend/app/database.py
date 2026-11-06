@@ -53,6 +53,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str | None] = mapped_column(String(32), nullable=True)
     email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     requested_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -101,6 +102,16 @@ def initialize_database() -> None:
                 text("ALTER TABLE users ADD COLUMN requested_branches TEXT")
             )
             columns.add("requested_branches")
+        if "username" not in columns:
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN username VARCHAR(32)")
+            )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username "
+                "ON users (username COLLATE NOCASE)"
+            )
+        )
 
         legacy_branch = "branch" if "branch" in columns else None
         legacy_requested_branch = (

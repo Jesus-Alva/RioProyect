@@ -16,6 +16,16 @@ test("public registration only allows one of the five named branches", () => {
   assert.equal(BRANCH_OPTIONS.some(({ value }) => value === "all"), false);
 });
 
+test("registration submits a username with the account request", () => {
+  const loginPage = readFileSync(
+    new URL("../app/login/page.jsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(loginPage, /id="auth-username"/);
+  assert.match(loginPage, /name="username"/);
+  assert.match(loginPage, /username,\s*email,/);
+});
+
 test("admin multi-select returns named branches in canonical order", () => {
   assert.deepEqual(
     getSelectedBranches([

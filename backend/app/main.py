@@ -1,6 +1,7 @@
 """API FastAPI para conversaciones seguras con agentes de Azure AI Foundry."""
 
 from contextlib import asynccontextmanager
+import logging
 import os
 from functools import lru_cache
 from typing import Any, Literal
@@ -22,6 +23,8 @@ from backend.app.security import validate_jwt_configuration
 
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -190,6 +193,7 @@ def chat(
         )
 
     user_id = str(user["id"])
+    branch_metadata = ",".join(selected_branches)
 
     try:
         openai_client = get_openai_client()
@@ -205,7 +209,7 @@ def chat(
             if (
                 metadata.get("owner") != user_id
                 or metadata.get("role") != agent_role
-                or metadata.get("branches") != selected_branches
+                or metadata.get("branches") != branch_metadata
             ):
                 raise HTTPException(
                     status_code=404,
@@ -221,7 +225,7 @@ def chat(
                 metadata={
                     "owner": user_id,
                     "role": agent_role,
-                    "branches": selected_branches,
+                    "branches": branch_metadata,
                 },
             )
             conversation_id = conversation.id
@@ -242,6 +246,7 @@ def chat(
     except HTTPException:
         raise
     except Exception:
+        logger.exception("Falló la consulta del agente de Azure AI Foundry.")
         raise HTTPException(
             status_code=502,
             detail="No fue posible procesar la solicitud en Azure AI Foundry.",

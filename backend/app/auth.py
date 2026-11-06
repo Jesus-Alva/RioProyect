@@ -37,6 +37,7 @@ router = APIRouter(prefix="/api/auth", tags=["authentication"])
 class RegisterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    username: str = Field(min_length=3, max_length=32)
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=12, max_length=128)
     role: OperationalRole
@@ -59,6 +60,17 @@ class RegisterRequest(BaseModel):
         normalized = value.strip().lower()
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized):
             raise ValueError("Ingresa un correo electrónico válido.")
+        return normalized
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,31}", normalized):
+            raise ValueError(
+                "El nombre de usuario debe tener 3 a 32 caracteres: "
+                "letras, números, punto, guion o guion bajo."
+            )
         return normalized
 
 
@@ -100,6 +112,7 @@ def user_response(user: User) -> dict:
         assigned_branches = []
     return {
         "id": user.id,
+        "username": user.username,
         "email": user.email,
         "role": user.role,
         "requested_role": user.requested_role,
@@ -178,6 +191,7 @@ def require_admin(user: dict = Depends(authenticate_user)) -> dict:
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> dict:
     user = User(
+        username=payload.username,
         email=payload.email,
         password_hash=hash_password(payload.password),
         requested_role=payload.role,
@@ -194,7 +208,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> dict:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Ya existe una cuenta con ese correo.",
+            detail="Ya existe una cuenta con ese correo o nombre de usuario.",
         ) from None
     db.refresh(user)
     return {

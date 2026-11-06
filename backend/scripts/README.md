@@ -31,6 +31,9 @@ explícitamente `.\.venv\Scripts\python.exe`; por ejemplo:
 | `AZURE_SEARCH_INDEX_NAME` | Nombre del índice de facturas | `rio-claro-invoices` |
 | `AZURE_SEARCH_INVENTORY_INDEX_NAME` | Índice de inventario | `inventario-index` |
 | `AZURE_SEARCH_SYNONYM_MAP_NAME` | Nombre del mapa Solr | `producto-sinonimos` |
+| `FOUNDRY_PROJECT_ENDPOINT` | Endpoint del proyecto de Azure AI Foundry | Requerida por `create_agents.py` |
+| `FOUNDRY_MODEL_NAME` | Modelo desplegado en Foundry | `gpt-4o` |
+| `AI_SEARCH_PROJECT_CONNECTION_ID` | Conexión de Azure AI Search configurada en el proyecto Foundry | Requerida por `create_agents.py` |
 | `SYNONYM_FILE_PATH` | Ruta del archivo de reglas Solr | `backend/config/product-synonyms.txt` |
 | `INVOICE_INPUT_DIR` | Carpeta local con facturas | `data/invoices` |
 | `INVOICE_ACCESS_MANIFEST_PATH` | Manifiesto de acceso por archivo | `backend/config/invoice-access.example.json` |
@@ -41,7 +44,63 @@ Ejecuta los scripts desde la raíz del repositorio y en este orden:
 
 1. `python backend/scripts/create_synonym_map.py`
 2. `python backend/scripts/setup_search_index.py`
-3. `python backend/scripts/seed_data.py`
+3. `python backend/scripts/seed_inventory.py`
+4. `python backend/scripts/seed_data.py` (si también vas a cargar facturas)
+5. `python backend/scripts/create_agents.py` (si vas a crear o actualizar agentes)
+
+`setup_search_index.py`, `seed_inventory.py`, `seed_data.py` y
+`create_agents.py` escriben recursos o documentos remotos cuando se ejecutan.
+No se ejecutan como parte de las pruebas unitarias.
+
+### Cargar catálogo de inventario de prueba
+
+`seed_inventory.py` prepara o actualiza `inventario-index` con el esquema
+compartido de `setup_search_index.py` y carga un catálogo fijo de productos
+reales (incluye cloro 1l y detergente 1kg) para las cinco sucursales:
+`guadalajara`, `zapopan`, `leon`, `queretaro` y `aguascalientes`. Cada documento
+mantiene `branch` como valor escalar y `security_id` como colección con `bodega`.
+Los IDs se derivan de la sucursal y del producto, por lo que las ejecuciones
+posteriores actualizan los mismos documentos en lugar de duplicarlos.
+
+Configura `AZURE_SEARCH_ENDPOINT` y, si usas otro nombre, establece
+`AZURE_SEARCH_INVENTORY_INDEX_NAME`. Ejecuta desde la raíz:
+
+```powershell
+python backend/scripts/seed_inventory.py
+```
+
+El catálogo contiene 30 productos por sucursal. Para escribir el índice, la
+identidad seleccionada por `DefaultAzureCredential` necesita permisos para crear
+o actualizar índices y para cargar documentos en Azure AI Search.
+
+Para `create_agents.py`, configura `FOUNDRY_PROJECT_ENDPOINT` y
+`AI_SEARCH_PROJECT_CONNECTION_ID`, además de los nombres de índices si difieren
+de los valores predeterminados. La identidad debe poder crear versiones de
+agentes en el proyecto Foundry. Bodega recibe dos herramientas Azure AI Search
+separadas —una para facturas y otra para `inventario-index`— y cada herramienta
+contiene exactamente un índice; los demás agentes solo reciben la herramienta
+del índice de facturas.
+
+Autentícate localmente con una identidad autorizada, por ejemplo `az login`, o
+usa otra fuente de credenciales admitida por `DefaultAzureCredential`. No guardes
+tokens, claves, endpoints privados ni archivos `.env` con secretos en el
+repositorio.
+
+### Pruebas locales
+
+Ejecuta la suite del backend desde la raíz del repositorio:
+
+```powershell
+python -m unittest discover -s backend/tests -v
+python -m compileall backend
+git diff --check
+```
+
+Las pruebas de inventario verifican el esquema, cobertura y clasificación de las
+cinco sucursales, IDs estables, `security_id` y carga usando clientes mockeados.
+Las pruebas de agentes validan la serialización local de las herramientas y que
+Bodega recibe dos herramientas con un único índice cada una. No necesitan
+credenciales ni realizan solicitudes a Azure.
 
 El manifiesto de factura es un objeto JSON cuyas claves son nombres de archivo.
 Cada valor debe tener exactamente `roles` (lista no vacía de los roles

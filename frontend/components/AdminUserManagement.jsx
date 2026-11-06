@@ -274,7 +274,8 @@ export default function AdminUserManagement({ token, onUnauthorized }) {
                   }}
                 >
                   <div className="user-card-heading">
-                    <strong>{user.email}</strong>
+                    <strong>{user.username || user.email}</strong>
+                    {user.username && <span>{user.email}</span>}
                     <span className={`user-status user-status-${user.status}`}>
                       {isAdmin ? "Administrador" : statusLabel(user.status)}
                     </span>

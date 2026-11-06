@@ -62,6 +62,8 @@ class MultiBranchDataTests(unittest.TestCase):
                     }
                 self.assertIn("branches", columns)
                 self.assertIn("requested_branches", columns)
+                self.assertIn("username", columns)
+                self.assertIsNone(user.username)
                 engine.dispose()
             get_engine.cache_clear()
 
@@ -330,7 +332,7 @@ class MultiBranchDataTests(unittest.TestCase):
         )
         self.assertEqual(
             [index.index_name for index in bodega_tool.azure_ai_search.indexes],
-            ["invoices", "inventario-index"],
+            ["inventario-index"],
         )
         self.assertEqual(
             [index.index_name for index in analyst_tool.azure_ai_search.indexes],

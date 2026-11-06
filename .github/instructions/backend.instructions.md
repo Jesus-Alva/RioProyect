@@ -20,3 +20,9 @@ applyTo: 'backend/**/*.py'
 ## Ingesta de Datos (seed_data.py)
 - Extrae usando Document Intelligence (prebuilt-invoice).
 - **Confiabilidad**: Si la confianza del total o proveedor es `< 0.8`, NO lo subas al índice; márcalo en `needs_review.jsonl` para que Laura lo revise manualmente.
+
+## Validación de Token JWT en FastAPI
+- Actualiza la función `authenticate_user` en `main.py` para usar `PyJWT` y `PyJWKClient`.
+- El `audience` debe ser el `ENTRA_CLIENT_ID` de la API.
+- Extrae el rol del claim `roles` del token decodificado.
+- **Importante**: Elimina el "bypass" de desarrollo. El backend debe exigir estrictamente el token válido para cualquier petición.

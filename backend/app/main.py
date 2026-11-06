@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
@@ -44,8 +44,9 @@ AGENT_NAMES = {
 
 
 class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     message: str = Field(min_length=1, max_length=2000)
-    role: str
     conversation_id: str | None = None
 
 
@@ -78,25 +79,15 @@ def get_jwks_client(tenant_id: str) -> PyJWKClient:
 def authenticate_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any]:
-    
-    # --- INICIO DEL BYPASS PARA DESARROLLO LOCAL ---
-    if os.getenv("ENVIRONMENT", "development") == "development":
-        return {
-            # Le damos todos los roles para que puedas probar cualquiera desde Swagger
-            "roles": ["directivo", "analista", "gerente", "bodega", "ti"],
-            "oid": "usuario-de-prueba-123"
-        }
-    # --- FIN DEL BYPASS ---
-
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=401,
-            detail="Se requiere un token Bearer válido.",
+            detail="Se requiere un token Bearer.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     tenant_id = os.getenv("ENTRA_TENANT_ID")
-    audience = os.getenv("ENTRA_AUDIENCE")
+    audience = os.getenv("ENTRA_CLIENT_ID")
     if not tenant_id or not audience:
         raise HTTPException(
             status_code=503,
@@ -122,8 +113,35 @@ def authenticate_user(
             detail="El token de autenticación no es válido.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from None
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible validar el token en este momento.",
+        ) from None
 
-    return claims
+    token_roles = claims.get("roles")
+    if not isinstance(token_roles, list) or len(token_roles) != 1:
+        raise HTTPException(
+            status_code=403,
+            detail="El token debe incluir exactamente un rol de aplicación válido.",
+        )
+
+    role = token_roles[0]
+    if not isinstance(role, str) or role not in ALLOWED_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="El rol de aplicación del token no está autorizado.",
+        )
+
+    user_id = claims.get("oid")
+    if not isinstance(user_id, str) or not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="El token no identifica a un usuario válido.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return {"oid": user_id, "role": role}
 
 
 @app.get("/health")
@@ -134,27 +152,10 @@ def health() -> dict[str, str]:
 @app.post("/api/chat")
 def chat(
     request: ChatRequest,
-    claims: dict[str, Any] = Depends(authenticate_user),
+    user: dict[str, Any] = Depends(authenticate_user),
 ) -> dict[str, str]:
-    role = request.role.lower()
-    token_roles = claims.get("roles")
-    if (
-        role not in ALLOWED_ROLES
-        or not isinstance(token_roles, list)
-        or role not in token_roles
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="El rol solicitado no está autorizado para este usuario.",
-        )
-
-    user_id = claims.get("oid")
-    if not isinstance(user_id, str) or not user_id:
-        raise HTTPException(
-            status_code=401,
-            detail="El token no identifica a un usuario válido.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    role = user["role"]
+    user_id = user["oid"]
 
     try:
         openai_client = get_openai_client()
@@ -198,8 +199,7 @@ def chat(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        print(f"❌ ERROR DE FOUNDRY: {str(e)}")
+    except Exception:
         raise HTTPException(
             status_code=502,
             detail="No fue posible procesar la solicitud en Azure AI Foundry.",

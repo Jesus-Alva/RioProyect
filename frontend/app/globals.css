@@ -264,9 +264,238 @@ select:focus-visible {
   line-height: 1.4;
 }
 
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.auth-card {
+  width: min(100%, 30rem);
+  padding: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: var(--surface);
+  box-shadow: 0 1rem 3rem rgb(24 62 70 / 8%);
+}
+
+.auth-card h1,
+.dashboard-header h1 {
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+
+.auth-card > p:not(.eyebrow):not(.error-message) {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.auth-button {
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.45rem;
+  color: var(--brand-dark);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dashboard-shell {
+  width: min(100%, 64rem);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 1rem 1rem 6.5rem;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+
+.role-dashboard {
+  margin-bottom: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+
+.role-dashboard h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.role-dashboard p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.location-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.location-list li {
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  background: #eaf5f3;
+  color: var(--brand-dark);
+  font-size: 0.85rem;
+}
+
+.dashboard-note {
+  margin-bottom: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.dashboard-table th,
+.dashboard-table td {
+  padding: 0.65rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.dashboard-table thead {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.invoice-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.invoice-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+}
+
+.review-status {
+  color: #812c26;
+  font-size: 0.88rem;
+}
+
+.voice-button {
+  min-height: 3.5rem;
+  padding-inline: 1.15rem;
+  font-size: 1.05rem;
+}
+
+.voice-button-large {
+  min-width: 100%;
+  min-height: 5rem;
+  flex: 1 1 100%;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
+.composer-bodega .composer-actions {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.composer-bodega .composer-buttons {
+  width: 100%;
+}
+
+.warehouse-dashboard {
+  border-inline-start: 0.35rem solid var(--brand);
+}
+
+.customer-request-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.customer-request-list li {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+}
+
+.customer-request-list li span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.system-status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 700;
+}
+
+.status-light {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #23833b;
+  box-shadow: 0 0 0 0.2rem rgb(35 131 59 / 15%);
+}
+
+.status-light-paused {
+  background: #bd6b16;
+  box-shadow: 0 0 0 0.2rem rgb(189 107 22 / 15%);
+}
+
 @media (min-width: 640px) {
   .page-shell {
     padding: 2rem 1.5rem 5rem;
+  }
+
+  .dashboard-shell {
+    padding: 2rem 1.5rem 5rem;
+  }
+
+  .dashboard-header,
+  .role-dashboard {
+    padding: 1.5rem 1.75rem;
+  }
+
+  .voice-button-large {
+    min-width: 12rem;
+    min-height: 5.5rem;
   }
 
   .chat-header {
@@ -279,5 +508,17 @@ select:focus-visible {
 
   .chat-footer {
     padding: 1.25rem 1.75rem;
+  }
+}
+
+@media (max-width: 460px) {
+  .dashboard-header {
+    align-items: flex-start;
+  }
+
+  .dashboard-header .button {
+    flex-shrink: 0;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.82rem;
   }
 }

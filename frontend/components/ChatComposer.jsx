@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 export default function ChatComposer({
   role,
+  largeVoiceButton = false,
   value,
   onChange,
   onSubmit,
@@ -71,7 +72,10 @@ export default function ChatComposer({
   }
 
   return (
-    <form className="composer" onSubmit={onSubmit}>
+    <form
+      className={`composer ${largeVoiceButton ? "composer-bodega" : ""}`}
+      onSubmit={onSubmit}
+    >
       <label className="sr-only" htmlFor="chat-message">
         Escribe tu consulta
       </label>
@@ -97,14 +101,20 @@ export default function ChatComposer({
         <div className="composer-buttons">
           {role === "bodega" && (
             <button
-              className={`button ${isListening ? "button-listening" : "button-secondary"}`}
+              className={`button voice-button ${largeVoiceButton ? "voice-button-large" : ""} ${isListening ? "button-listening" : "button-secondary"}`}
               type="button"
               onClick={toggleVoiceInput}
               disabled={isSending}
               aria-pressed={isListening}
               aria-label={isListening ? "Detener dictado" : "Dictar consulta"}
             >
-              {isListening ? "■ Detener" : "🎙 Dictar"}
+              {isListening
+                ? largeVoiceButton
+                  ? "■ Detener dictado"
+                  : "■ Detener"
+                : largeVoiceButton
+                  ? "🎙 Dictar consulta"
+                  : "🎙 Dictar"}
             </button>
           )}
           <button

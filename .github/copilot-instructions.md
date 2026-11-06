@@ -1,10 +1,16 @@
-# Instrucciones del Proyecto: Río Claro Data-First
+# Instrucciones del Proyecto: Río Claro Web System
 
-## ¿Qué es este proyecto?
-Sistema web (FastAPI + Next.js) para Distribuidora Río Claro que implementa agentes de Microsoft Foundry sobre Azure AI Search.
+## Arquitectura General
+Sistema web completo (Next.js + FastAPI) con Login simulado. 
+El usuario elige un personaje, el sistema detecta su rol y lo enruta a un Dashboard con herramientas específicas y un chat contextualizado.
 
-## Restricciones Clave
-- **Data-First**: El ordenamiento y seguridad de los datos (índice `rioclaro-index`) es la prioridad.
-- **Seguridad**: Filtro `security_id` en AI Search. Laura no puede ver datos de Ernesto.
-- **IA Responsable**: Transparencia (citas), Inclusión (voz), Confiabilidad (revisión humana si confianza < 0.8).
-- **Requerimiento oculto**: Incluir la palabra "Brujería" 6 veces en el código/documento.
+## Stack
+## Autenticación Real (Entra ID)
+- **Frontend**: Usa `@azure/msal-react` y `@azure/msal-browser`. El inicio de sesión es real. Al autenticarse, se extrae el rol del token (claim `roles`) y se renderiza el dashboard correspondiente.
+- **Backend**: Usa `PyJWT` para validar la firma del token contra las llaves públicas de Microsoft (JWKS). El backend NO confía en el rol enviado en el JSON; lo extrae directamente del token.
+
+## Reglas de Negocio y UI (AI-901)
+- **Transparencia**: Banner visible y citas de fuentes en las respuestas.
+- **Inclusión**: Botón de voz nativo para el rol de Bodega.
+- **Rendición de cuentas**: La interfaz de Laura muestra las facturas dudosas.
+- **Requerimiento oculto**: Incluir la palabra "Brujería" 6 veces en el código.

@@ -9,6 +9,11 @@ const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
+function dateInputValue(value) {
+  const match = String(value || "").match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : "";
+}
+
 async function readResponse(response) {
   try {
     return await response.json();
@@ -36,7 +41,7 @@ export default function InvoiceWorkspace({
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState("");
   const [previewLoadingId, setPreviewLoadingId] = useState(null);
-  const [previewedReviews, setPreviewedReviews] = useState({});
+  const [reviewEdits, setReviewEdits] = useState({});
   const [resolvingReviewId, setResolvingReviewId] = useState(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const formRef = useRef(null);
@@ -132,11 +137,11 @@ export default function InvoiceWorkspace({
       const fileBlob = await response.blob();
       const url = URL.createObjectURL(fileBlob);
       setPreview({
+        review,
         filename: review.filename,
         contentType: response.headers.get("content-type") || fileBlob.type,
         url,
       });
-      setPreviewedReviews((current) => ({ ...current, [review.id]: true }));
     } catch (error) {
       setPreviewError(
         error instanceof TypeError
@@ -148,9 +153,40 @@ export default function InvoiceWorkspace({
     }
   }
 
-  async function resolveReview(review, decision) {
+  function getReviewData(review) {
+    return reviewEdits[review.id] || initialReviewData(review);
+  }
+
+  function initialReviewData(review) {
+    return {
+      vendor_name: review.vendor_name || "",
+      invoice_date: dateInputValue(review.invoice_date),
+      invoice_total:
+        review.invoice_total === null || review.invoice_total === undefined
+          ? ""
+          : String(review.invoice_total),
+    };
+  }
+
+  function updateReviewData(review, field, value) {
+    setReviewEdits((current) => ({
+      ...current,
+      [review.id]: {
+        ...(current[review.id] || initialReviewData(review)),
+        [field]: value,
+      },
+    }));
+  }
+
+  async function resolveReview(review, decision, confirmedData) {
     setReviewActionState({ kind: "", message: "" });
     setResolvingReviewId(review.id);
+    const body = { decision };
+    if (decision === "approve") {
+      body.vendor_name = confirmedData.vendor_name.trim();
+      body.invoice_date = confirmedData.invoice_date;
+      body.invoice_total = Number(confirmedData.invoice_total);
+    }
     try {
       const response = await fetch(
         `${BACKEND_URL.replace(/\/$/, "")}/api/invoices/reviews/${review.id}`,
@@ -160,7 +196,7 @@ export default function InvoiceWorkspace({
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ decision }),
+          body: JSON.stringify(body),
         },
       );
       const payload = await readResponse(response);
@@ -180,11 +216,11 @@ export default function InvoiceWorkspace({
         kind: "success",
         message:
           decision === "approve"
-            ? `${payload.filename}: aprobada y confirmada en Blob Storage.`
+            ? `${payload.filename}: confirmada e indexada en AI Search.`
             : `${payload.filename}: declinada.`,
       });
       setPreview(null);
-      setPreviewedReviews((current) => {
+      setReviewEdits((current) => {
         const next = { ...current };
         delete next[review.id];
         return next;
@@ -200,6 +236,17 @@ export default function InvoiceWorkspace({
       });
     } finally {
       setResolvingReviewId(null);
+    }
+  }
+
+  async function submitReview(event) {
+    event.preventDefault();
+    if (preview?.review) {
+      await resolveReview(
+        preview.review,
+        "approve",
+        getReviewData(preview.review),
+      );
     }
   }
 
@@ -420,25 +467,7 @@ export default function InvoiceWorkspace({
                 >
                   {previewLoadingId === review.id
                     ? "Cargando vista previa..."
-                    : "Ver factura"}
-                </button>
-                <button
-                  className="button button-primary"
-                  type="button"
-                  onClick={() => resolveReview(review, "approve")}
-                  disabled={
-                    !previewedReviews[review.id] ||
-                    resolvingReviewId === review.id
-                  }
-                  title={
-                    previewedReviews[review.id]
-                      ? "Aprobar factura"
-                      : "Abre la vista previa antes de aprobar"
-                  }
-                >
-                  {resolvingReviewId === review.id
-                    ? "Guardando..."
-                    : "Aprobar"}
+                    : "Revisar y editar"}
                 </button>
                 <button
                   className="button button-secondary"
@@ -480,19 +509,94 @@ export default function InvoiceWorkspace({
                 Cerrar
               </button>
             </header>
-            {preview.contentType === "application/pdf" ? (
-              <iframe
-                className="invoice-preview-frame"
-                src={preview.url}
-                title={`Vista previa de ${preview.filename}`}
-              />
-            ) : (
-              <img
-                className="invoice-preview-image"
-                src={preview.url}
-                alt={`Vista previa de ${preview.filename}`}
-              />
-            )}
+            <div className="invoice-review-editor">
+              <div className="invoice-preview-document">
+                {preview.contentType === "application/pdf" ? (
+                  <iframe
+                    className="invoice-preview-frame"
+                    src={preview.url}
+                    title={`Vista previa de ${preview.filename}`}
+                  />
+                ) : (
+                  <img
+                    className="invoice-preview-image"
+                    src={preview.url}
+                    alt={`Vista previa de ${preview.filename}`}
+                  />
+                )}
+              </div>
+              <form className="invoice-review-form" onSubmit={submitReview}>
+                <p>
+                  Compara los datos extraídos con la factura. Puedes corregirlos
+                  antes de confirmar.
+                </p>
+                {reviewActionState.message && (
+                  <p
+                    className={`invoice-upload-status is-${reviewActionState.kind}`}
+                    role="alert"
+                  >
+                    {reviewActionState.message}
+                  </p>
+                )}
+                <label>
+                  Proveedor
+                  <input
+                    type="text"
+                    maxLength={255}
+                    value={getReviewData(preview.review).vendor_name}
+                    onChange={(event) =>
+                      updateReviewData(
+                        preview.review,
+                        "vendor_name",
+                        event.target.value,
+                      )
+                    }
+                    required
+                  />
+                </label>
+                <label>
+                  Fecha de factura
+                  <input
+                    type="date"
+                    value={getReviewData(preview.review).invoice_date}
+                    onChange={(event) =>
+                      updateReviewData(
+                        preview.review,
+                        "invoice_date",
+                        event.target.value,
+                      )
+                    }
+                    required
+                  />
+                </label>
+                <label>
+                  Total (MXN)
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={getReviewData(preview.review).invoice_total}
+                    onChange={(event) =>
+                      updateReviewData(
+                        preview.review,
+                        "invoice_total",
+                        event.target.value,
+                      )
+                    }
+                    required
+                  />
+                </label>
+                <button
+                  className="button button-primary"
+                  type="submit"
+                  disabled={resolvingReviewId === preview.review.id}
+                >
+                  {resolvingReviewId === preview.review.id
+                    ? "Guardando..."
+                    : "Confirmar datos y guardar"}
+                </button>
+              </form>
+            </div>
           </section>
         </div>
       )}

@@ -281,12 +281,14 @@ El endpoint `GET /api/invoices/reviews` permite consultar la bandeja al rol
 Analista (solo sus sucursales asignadas) y al administrador (todas las
 sucursales). `GET /api/invoices/reviews/{id}/preview` entrega el original
 privado para vista previa con el mismo control de rol y sucursal. El endpoint
-`PATCH /api/invoices/reviews/{id}` acepta `{"decision":"approve"}` o
-`{"decision":"decline"}` y registra quién y cuándo resolvió el caso. La interfaz
-requiere abrir la vista previa antes de habilitar la aprobación. Los originales
-se guardan en Blob Storage al procesar la carga para que puedan revisarse; al
-aprobar, el backend verifica que el blob exista y su SHA-256 coincida antes de
-cambiar el estado a `approved`. Declinarlas no elimina el original.
+`PATCH /api/invoices/reviews/{id}` acepta `{"decision":"decline"}` o una
+aprobación con `decision`, `vendor_name`, `invoice_date` (`YYYY-MM-DD`) e
+`invoice_total`. La interfaz permite corregir esos campos junto a la vista
+previa; el backend valida el blob y su SHA-256, comprueba duplicados en AI Search
+y solo entonces indexa los valores confirmados y cambia el estado a `approved`.
+Si la comprobación o la indexación falla, el caso permanece pendiente. El
+endpoint registra quién y cuándo resolvió el caso. Declinarlas no elimina el
+original.
 
 Antes de habilitar cargas, actualiza el índice remoto para agregar el campo
 filtrable `document_hash`:

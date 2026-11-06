@@ -290,6 +290,7 @@ class InvoiceUploadTests(unittest.TestCase):
             reviews.json()["items"][0]["original_filename"], "invoice.pdf"
         )
         self.assertEqual(reviews.json()["items"][0]["branch"], "guadalajara")
+        self.assertEqual(reviews.json()["items"][0]["invoice_total"], 123.45)
         self.assertIn("VendorName", reviews.json()["items"][0]["reasons"][0])
         search_client.upload_documents.assert_not_called()
 
@@ -608,6 +609,11 @@ class InvoiceUploadTests(unittest.TestCase):
         review_id = self.create_review()
         credential = SimpleNamespace(close=Mock())
         blob_service = Mock()
+        search_client = Mock()
+        search_client.search.return_value = []
+        search_client.upload_documents.return_value = [
+            SimpleNamespace(succeeded=True)
+        ]
         blob = blob_service.get_container_client.return_value.get_blob_client.return_value
         blob.get_blob_properties.return_value = SimpleNamespace(
             metadata={"sha256": "c" * 64}
@@ -622,23 +628,43 @@ class InvoiceUploadTests(unittest.TestCase):
                 "backend.app.invoice_upload.BlobServiceClient",
                 return_value=blob_service,
             ),
+            patch(
+                "backend.app.invoice_upload.SearchClient",
+                return_value=search_client,
+            ),
         ):
             response = self.client.patch(
                 f"/api/invoices/reviews/{review_id}",
                 headers={"Authorization": f"Bearer {token}"},
-                json={"decision": "approve"},
+                json={
+                    "decision": "approve",
+                    "vendor_name": "Proveedor corregido",
+                    "invoice_date": "2026-11-06",
+                    "invoice_total": 456.78,
+                },
             )
 
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["status"], "approved")
-        self.assertIn("Blob Storage", response.json()["detail"])
+        self.assertIn("AI Search", response.json()["detail"])
         blob_service.get_container_client.assert_called_once_with("facturas-raw")
         blob.get_blob_properties.assert_called_once_with()
         blob_service.close.assert_called_once_with()
-        credential.close.assert_called_once_with()
+        self.assertEqual(credential.close.call_count, 2)
+        search_client.close.assert_called_once_with()
+        indexed_document = search_client.upload_documents.call_args.kwargs[
+            "documents"
+        ][0]
+        self.assertEqual(indexed_document["vendor_name"], "Proveedor corregido")
+        self.assertEqual(indexed_document["invoice_date"], "2026-11-06")
+        self.assertEqual(indexed_document["invoice_total"], 456.78)
+        self.assertEqual(indexed_document["branch"], "guadalajara")
         with Session(get_engine(str(get_database_path()))) as session:
             upload = session.get(InvoiceUpload, review_id)
             self.assertEqual(upload.status, "approved")
+            self.assertEqual(upload.vendor_name, "Proveedor corregido")
+            self.assertEqual(upload.invoice_date, "2026-11-06")
+            self.assertEqual(upload.invoice_total, 456.78)
             self.assertEqual(upload.reviewed_by, 1)
             self.assertIsNotNone(upload.reviewed_at)
 
@@ -665,10 +691,85 @@ class InvoiceUploadTests(unittest.TestCase):
             response = self.client.patch(
                 f"/api/invoices/reviews/{review_id}",
                 headers={"Authorization": f"Bearer {token}"},
-                json={"decision": "approve"},
+                json={
+                    "decision": "approve",
+                    "vendor_name": "Proveedor válido",
+                    "invoice_date": "2026-11-06",
+                    "invoice_total": 456.78,
+                },
             )
 
         self.assertEqual(response.status_code, 409)
+        with Session(get_engine(str(get_database_path()))) as session:
+            self.assertEqual(
+                session.get(InvoiceUpload, review_id).status,
+                "needs_review",
+            )
+
+    def test_approval_requires_confirmed_fields(self):
+        token = self.token_for()
+        review_id = self.create_review()
+
+        with (
+            patch("backend.app.invoice_upload.DefaultAzureCredential") as credential,
+            patch("backend.app.invoice_upload.BlobServiceClient") as blob_service,
+        ):
+            response = self.client.patch(
+                f"/api/invoices/reviews/{review_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"decision": "approve"},
+            )
+
+        self.assertEqual(response.status_code, 422)
+        credential.assert_not_called()
+        blob_service.assert_not_called()
+
+    def test_approval_rejects_duplicate_confirmed_data_without_indexing(self):
+        token = self.token_for()
+        review_id = self.create_review()
+        credential = SimpleNamespace(close=Mock())
+        blob_service = Mock()
+        blob = blob_service.get_container_client.return_value.get_blob_client.return_value
+        blob.get_blob_properties.return_value = SimpleNamespace(
+            metadata={"sha256": "c" * 64}
+        )
+        search_client = Mock()
+        search_client.search.return_value = [
+            {
+                "document_hash": "d" * 64,
+                "vendor_name": "Proveedor confirmado",
+                "invoice_date": "2026-11-06",
+                "invoice_total": 456.78,
+            }
+        ]
+
+        with (
+            patch(
+                "backend.app.invoice_upload.DefaultAzureCredential",
+                return_value=credential,
+            ),
+            patch(
+                "backend.app.invoice_upload.BlobServiceClient",
+                return_value=blob_service,
+            ),
+            patch(
+                "backend.app.invoice_upload.SearchClient",
+                return_value=search_client,
+            ),
+        ):
+            response = self.client.patch(
+                f"/api/invoices/reviews/{review_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "decision": "approve",
+                    "vendor_name": "Proveedor confirmado",
+                    "invoice_date": "2026-11-06",
+                    "invoice_total": 456.78,
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        search_client.upload_documents.assert_not_called()
         with Session(get_engine(str(get_database_path()))) as session:
             self.assertEqual(
                 session.get(InvoiceUpload, review_id).status,

@@ -1,6 +1,7 @@
 """API FastAPI para conversaciones seguras con agentes de Azure AI Foundry."""
 
 from contextlib import asynccontextmanager
+from datetime import date
 import hashlib
 import logging
 import math
@@ -14,7 +15,13 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -252,6 +259,32 @@ class InvoiceReviewDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     decision: Literal["approve", "decline"]
+    vendor_name: str | None = Field(default=None, max_length=255)
+    invoice_date: date | None = None
+    invoice_total: float | None = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+    )
+
+    @field_validator("vendor_name")
+    @classmethod
+    def normalize_vendor_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def require_confirmed_invoice_fields(self) -> "InvoiceReviewDecision":
+        if self.decision == "approve" and any(
+            value is None
+            for value in (self.vendor_name, self.invoice_date, self.invoice_total)
+        ):
+            raise ValueError(
+                "Para aprobar, confirma proveedor, fecha y total de la factura."
+            )
+        return self
 
 
 @app.get("/api/invoices/reviews/{review_id}/preview")
@@ -294,6 +327,13 @@ def resolve_invoice_review(
     return decide_invoice_review(
         review_id=review_id,
         decision=payload.decision,
+        vendor_name=payload.vendor_name,
+        invoice_date=(
+            payload.invoice_date.isoformat()
+            if payload.invoice_date is not None
+            else None
+        ),
+        invoice_total=payload.invoice_total,
         user=user,
         db=db,
     )

@@ -28,6 +28,7 @@ from backend.scripts.seed_data import (
     invoice_date_value,
     invoice_to_search_document,
     invoice_total_value,
+    make_document_id,
 )
 
 
@@ -203,6 +204,7 @@ def _find_possible_duplicate(
     vendor_name: Any,
     invoice_date: Any,
     invoice_total: float,
+    exclude_document_hash: str | None = None,
 ) -> bool:
     comparable_date = _date_for_comparison(invoice_date)
     if comparable_date is None:
@@ -215,11 +217,21 @@ def _find_possible_duplicate(
             f"invoice_total ge {invoice_total - 0.005} and "
             f"invoice_total le {invoice_total + 0.005}"
         ),
-        select=["vendor_name", "invoice_date", "invoice_total"],
+        select=[
+            "document_hash",
+            "vendor_name",
+            "invoice_date",
+            "invoice_total",
+        ],
         top=1000,
     )
     normalized_vendor = _normalize_vendor(vendor_name)
     for candidate in candidates:
+        if (
+            exclude_document_hash is not None
+            and candidate.get("document_hash") == exclude_document_hash
+        ):
+            continue
         candidate_date = _date_for_comparison(candidate.get("invoice_date"))
         try:
             candidate_total = float(candidate.get("invoice_total"))
@@ -396,6 +408,11 @@ def process_invoice_upload(
             vendor_confidence = None
             total_confidence = None
 
+        try:
+            normalized_total = invoice_total_value(raw_total)
+        except (ArithmeticError, TypeError, ValueError):
+            normalized_total = None
+
         operation = "guardar factura en Blob Storage"
         generated_filename = _store_original(
             db,
@@ -422,20 +439,24 @@ def process_invoice_upload(
             search_document, reasons = None, [
                 "Document Intelligence devolvió datos que requieren revisión."
             ]
-        if search_document is None:
+        if search_document is None or normalized_total is None:
+            if not reasons:
+                reasons = [
+                    "Document Intelligence no devolvió un total válido para revisar."
+                ]
             status_code, response = _save_review(
                 db,
                 upload,
                 reasons,
                 vendor_name=vendor_name,
                 invoice_date=invoice_date,
+                invoice_total=normalized_total,
                 vendor_confidence=vendor_confidence,
                 total_confidence=total_confidence,
             )
             return status_code, response
 
         operation = "buscar factura duplicada en Azure AI Search"
-        normalized_total = invoice_total_value(raw_total)
         possible_duplicate = _find_possible_duplicate(
             search_client,
             vendor_name,
@@ -677,14 +698,118 @@ def get_invoice_review_preview(
 def decide_invoice_review(
     review_id: int,
     decision: str,
+    vendor_name: str | None,
+    invoice_date: str | None,
+    invoice_total: float | None,
     user: dict[str, Any],
     db: Session,
 ) -> dict[str, Any]:
     upload = _review_upload_for_user(review_id, user, db)
     if decision == "approve":
+        if (
+            vendor_name is None
+            or not vendor_name.strip()
+            or invoice_date is None
+            or invoice_total is None
+            or not math.isfinite(invoice_total)
+            or invoice_total <= 0
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Confirma proveedor, fecha y un total válido para aprobar.",
+            )
+
+        vendor_name = vendor_name.strip()[:255]
+        search_endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
+        if not search_endpoint:
+            raise HTTPException(
+                status_code=503,
+                detail="La búsqueda de facturas no está configurada.",
+            )
+
         _verify_review_blob(upload)
+        credential = None
+        search_client = None
+        try:
+            credential = DefaultAzureCredential()
+            search_client = SearchClient(
+                endpoint=search_endpoint,
+                index_name=os.getenv(
+                    "AZURE_SEARCH_INDEX_NAME", "rio-claro-invoices"
+                ),
+                credential=credential,
+            )
+            if _find_possible_duplicate(
+                search_client,
+                vendor_name,
+                invoice_date,
+                invoice_total,
+                exclude_document_hash=upload.document_hash,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Ya existe una factura con el mismo proveedor, fecha y "
+                        "total confirmados."
+                    ),
+                )
+
+            filename = upload.generated_filename or upload.original_filename
+            search_document = {
+                "id": make_document_id(upload.document_hash, 1),
+                "document_filename": filename,
+                "document_hash": upload.document_hash,
+                "vendor_name": vendor_name,
+                "invoice_content": (
+                    f"Factura: {filename}. Facturas. "
+                    f"Proveedor: {vendor_name}. Fecha: {invoice_date}. "
+                    f"Total: {invoice_total}. "
+                    f"Sucursal: {upload.branch}. "
+                    "Datos confirmados manualmente."
+                ),
+                "invoice_total": invoice_total,
+                "invoice_date": invoice_date,
+                "security_id": INDEXED_ROLES,
+                "branch": upload.branch,
+                "product_names": [],
+            }
+            results = search_client.upload_documents(documents=[search_document])
+            failures = [
+                result for result in results or [] if not result.succeeded
+            ]
+            if not results or failures:
+                logger.error(
+                    "Azure AI Search rejected manually approved invoice: "
+                    "error_codes=%s",
+                    [getattr(result, "error_code", None) for result in failures],
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail="No fue posible guardar la factura confirmada.",
+                )
+        except AzureError as error:
+            logger.error(
+                "Could not index manually approved invoice: exception=%s "
+                "status_code=%s error_code=%s",
+                type(error).__name__,
+                getattr(error, "status_code", None),
+                getattr(error, "error_code", None),
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="No fue posible guardar la factura confirmada.",
+            ) from None
+        finally:
+            if search_client is not None:
+                search_client.close()
+            if credential is not None:
+                credential.close()
+
         next_status = "approved"
-        detail = "Factura aprobada; el original está disponible en Blob Storage."
+        detail = (
+            "Factura confirmada e indexada en Azure AI Search; el original está "
+            "disponible en Blob Storage."
+        )
     else:
         next_status = "declined"
         detail = "Factura declinada."
@@ -697,6 +822,15 @@ def decide_invoice_review(
         )
         .values(
             status=next_status,
+            **(
+                {
+                    "vendor_name": vendor_name,
+                    "invoice_date": invoice_date,
+                    "invoice_total": invoice_total,
+                }
+                if decision == "approve"
+                else {}
+            ),
             reviewed_by=user["id"],
             reviewed_at=datetime.now(timezone.utc),
         )

@@ -7,6 +7,7 @@ from pathlib import Path
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Float,
     Integer,
     String,
     Text,
@@ -69,6 +70,34 @@ class User(Base):
     )
 
 
+class InvoiceUpload(Base):
+    __tablename__ = "invoice_uploads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    branch: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(24), index=True)
+    uploaded_by: Mapped[int] = mapped_column(Integer, index=True)
+    generated_filename: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    vendor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    invoice_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    invoice_total: Mapped[float | None] = mapped_column(Float, nullable=True)
+    vendor_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    review_reasons: Mapped[str] = mapped_column(Text, default="[]")
+    blob_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 def get_database_path() -> Path:
     configured_path = os.getenv("AUTH_DATABASE_PATH")
     if configured_path:
@@ -112,6 +141,20 @@ def initialize_database() -> None:
                 "ON users (username COLLATE NOCASE)"
             )
         )
+
+        invoice_columns = {
+            column["name"]
+            for column in inspect(connection).get_columns(
+                InvoiceUpload.__tablename__
+            )
+        }
+        if "generated_filename" not in invoice_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE invoice_uploads "
+                    "ADD COLUMN generated_filename VARCHAR(255)"
+                )
+            )
 
         legacy_branch = "branch" if "branch" in columns else None
         legacy_requested_branch = (

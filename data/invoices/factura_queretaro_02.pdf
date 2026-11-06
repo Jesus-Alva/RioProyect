@@ -1,0 +1,81 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+6 0 obj
+<< /Length 3201 >>
+stream
+0.97 0.98 0.98 rg 0 0 612 792 re f
+0.04 0.32 0.29 rg 0 657 612 135 re f
+BT /F2 9 Tf 0.77 0.90 0.87 rg 1 0 0 1 42 752 Tm (RIO CLARO | COMPROBANTE PARA CARGA INTERNA) Tj ET
+BT /F2 25 Tf 1 1 1 rg 1 0 0 1 42 714 Tm (FACTURA) Tj ET
+BT /F2 10 Tf 0.91 0.96 0.95 rg 1 0 0 1 42 689 Tm (REGISTRO INTERNO - INFORMACION SINTETICA) Tj ET
+BT /F2 8 Tf 0.77 0.90 0.87 rg 1 0 0 1 433 737 Tm (FOLIO) Tj ET
+BT /F2 12 Tf 1 1 1 rg 1 0 0 1 433 716 Tm (RC-0402-2026) Tj ET
+BT /F1 9 Tf 0.91 0.96 0.95 rg 1 0 0 1 433 691 Tm (MONEDA: MXN) Tj ET
+BT /F2 9 Tf 0.04 0.32 0.29 rg 1 0 0 1 42 631 Tm (DATOS DEL PROVEEDOR) Tj ET
+BT /F2 11 Tf 0.10 0.17 0.22 rg 1 0 0 1 42 608 Tm (Proveedor: Piedra de Rio 04-02 S.A.) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 42 588 Tm (Giro: Articulos para mantenimiento) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 42 571 Tm (Domicilio: Calle del Comercio 125, zona centro) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 42 554 Tm (Contacto: facturacion@example.invalid) Tj ET
+1 1 1 rg 0.82 0.87 0.86 RG 1 w 42 478 528 57 re B
+BT /F2 8 Tf 0.04 0.32 0.29 rg 1 0 0 1 56 514 Tm (DATOS DE LA FACTURA) Tj ET
+BT /F2 10 Tf 0.10 0.17 0.22 rg 1 0 0 1 56 492 Tm (Fecha de emision: 2026-10-17) Tj ET
+BT /F2 10 Tf 0.10 0.17 0.22 rg 1 0 0 1 322 492 Tm (Sucursal: Queretaro, Queretaro) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 56 459 Tm (Cliente: Distribuidora Rio Claro) Tj ET
+0.04 0.32 0.29 rg 42 416 528 25 re f
+BT /F2 8 Tf 1 1 1 rg 1 0 0 1 53 424 Tm (DESCRIPCION) Tj ET
+BT /F2 8 Tf 1 1 1 rg 1 0 0 1 348 424 Tm (CANT.) Tj ET
+BT /F2 8 Tf 1 1 1 rg 1 0 0 1 412 424 Tm (PRECIO) Tj ET
+BT /F2 8 Tf 1 1 1 rg 1 0 0 1 500 424 Tm (IMPORTE) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 53 390 Tm (Guante de trabajo par) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 355 390 Tm (2) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 410 390 Tm ($44.00) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 498 390 Tm ($88.00) Tj ET
+0.8 w 0.82 0.87 0.86 RG 42 380 m 570 380 l S
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 53 359 Tm (Cloro liquido 1 L) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 355 359 Tm (5) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 410 359 Tm ($49.50) Tj ET
+BT /F1 9 Tf 0.10 0.17 0.22 rg 1 0 0 1 498 359 Tm ($247.50) Tj ET
+0.8 w 0.82 0.87 0.86 RG 42 349 m 570 349 l S
+BT /F1 10 Tf 0.10 0.17 0.22 rg 1 0 0 1 370 280 Tm (Subtotal) Tj ET
+BT /F1 10 Tf 0.10 0.17 0.22 rg 1 0 0 1 497 280 Tm ($335.50) Tj ET
+BT /F1 10 Tf 0.10 0.17 0.22 rg 1 0 0 1 370 258 Tm (IVA 16%) Tj ET
+BT /F1 10 Tf 0.10 0.17 0.22 rg 1 0 0 1 497 258 Tm ($53.68) Tj ET
+1 w 0.04 0.32 0.29 RG 360 246 m 570 246 l S
+BT /F2 12 Tf 0.04 0.32 0.29 rg 1 0 0 1 370 222 Tm (TOTAL) Tj ET
+BT /F2 12 Tf 0.04 0.32 0.29 rg 1 0 0 1 475 222 Tm ($389.18 MXN) Tj ET
+0.92 0.96 0.95 rg 0.78 0.87 0.85 RG 1 w 42 106 528 64 re B
+BT /F2 8 Tf 0.04 0.32 0.29 rg 1 0 0 1 56 150 Tm (USO DENTRO DE RIO CLARO) Tj ET
+BT /F1 8 Tf 0.10 0.17 0.22 rg 1 0 0 1 56 130 Tm (Datos sinteticos para validar carga, clasificacion por sucursal y lectura OCR.) Tj ET
+BT /F2 8 Tf 0.30 0.34 0.35 rg 1 0 0 1 56 113 Tm (No corresponde a una venta real ni tiene validez fiscal o comercial.) Tj ET
+BT /F1 8 Tf 0.35 0.43 0.46 rg 1 0 0 1 42 73 Tm (Documento generado para pruebas funcionales de la aplicacion.) Tj ET
+endstream
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000257 00000 n 
+0000000327 00000 n 
+0000000402 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+3655
+%%EOF

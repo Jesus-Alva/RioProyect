@@ -29,6 +29,8 @@ explícitamente `.\.venv\Scripts\python.exe`; por ejemplo:
 | `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` | Endpoint de Document Intelligence | Requerida por `seed_data.py` |
 | `AZURE_SEARCH_ENDPOINT` | Endpoint de Azure AI Search | Requerida |
 | `AZURE_SEARCH_INDEX_NAME` | Nombre del índice de facturas | `rio-claro-invoices` |
+| `AZURE_STORAGE_BLOB_URL` | URL del servicio Blob (`https://<cuenta>.blob.core.windows.net`) | Requerida por la carga web |
+| `AZURE_STORAGE_CONTAINER_NAME` | Contenedor para originales de facturas | `facturas-raw` |
 | `AZURE_SEARCH_INVENTORY_INDEX_NAME` | Índice de inventario | `inventario-index` |
 | `AZURE_SEARCH_SYNONYM_MAP_NAME` | Nombre del mapa Solr | `producto-sinonimos` |
 | `FOUNDRY_PROJECT_ENDPOINT` | Endpoint del proyecto de Azure AI Foundry | Requerida por `create_agents.py` |
@@ -194,3 +196,57 @@ servicios. En una ejecución indexable, el resultado debe indicar
 documento contiene `branch=leon` y `security_id` con los roles del manifiesto.
 Si el OCR tiene confianza insuficiente, debe aparecer como `needs_review` y no
 subirse; confirma el motivo en `data\needs_review.jsonl`.
+
+### Carga de facturas desde el panel de Analista
+
+`POST /api/invoices/upload` recibe `file` y `branch` como `multipart/form-data`.
+El usuario debe estar autenticado con rol `analista`; el servidor valida que la
+sucursal pertenezca a la cuenta activa, limita el archivo a 20 MB y acepta PDF,
+PNG, JPEG, TIFF y BMP. No confía en el rol ni en las sucursales del formulario.
+
+La aplicación guarda una reserva idempotente y la cola `needs_review` en SQLite.
+Los duplicados exactos se comparan por SHA-256 global y responden `409`;
+coincidencias de proveedor/fecha/total se envían a revisión humana con `202`.
+Las facturas con confianza inferior a `0.8`, campos requeridos ausentes o más
+de una factura detectada no se indexan. Las facturas válidas se agregan al
+índice con `document_hash`, `branch` y
+`security_id=["analista","directivo","gerente"]`. Los errores de Azure se
+registran sin incluir credenciales y se responden como `502`, excepto los
+errores de permisos de escritura en Blob Storage, que devuelven `503` con
+instrucciones de configuración.
+
+El original se conserva en Blob Storage con el nombre asignado en el contenedor
+`facturas-raw`, con su SHA-256 y el periodo de retención como metadatos. Para
+que la retención se aplique automáticamente, configura una regla de
+administración del ciclo de vida en la cuenta de almacenamiento usando
+`backend/config/blob-lifecycle-policy.example.json`. La regla elimina los blobs
+con el prefijo `facturas-raw/invoices/` después de 90 días desde su última
+modificación. Si cambias `AZURE_STORAGE_CONTAINER_NAME`, actualiza también el
+prefijo de la regla. La identidad administrada o `DefaultAzureCredential`
+necesita el rol `Storage Blob Data Contributor` en el contenedor, además de
+acceso a Document Intelligence y a Azure AI Search.
+
+Al procesar cada archivo, la aplicación le asigna el nombre
+`FACTURA_<sucursal>_<AAAAMMDD>_<proveedor>_<id>.<ext>`. La fecha y el proveedor
+se toman del OCR; si el proveedor no es legible con confianza de al menos
+`0.8`, el nombre usa `proveedor-pendiente`, y si falta la fecha se usa la fecha
+de carga. El identificador usa el SHA-256 completo del archivo; si el OCR
+detecta varias facturas en un archivo, se deriva un identificador distinto por
+cada documento. El nombre asignado se guarda en Blob Storage, AI Search y la cola
+de revisión; el nombre original se conserva en los registros de la aplicación.
+La ingesta batch usa la misma convención y distingue varias facturas extraídas
+del mismo archivo.
+
+El endpoint `GET /api/invoices/reviews` permite consultar la bandeja al rol
+Analista (solo sus sucursales asignadas) y al administrador (todas las
+sucursales). Antes de habilitar cargas, actualiza el índice remoto para agregar
+el campo filtrable `document_hash`:
+
+```powershell
+.\venv\Scripts\python.exe backend\scripts\setup_search_index.py
+```
+
+La operación anterior modifica índices remotos y debe ejecutarse manualmente
+con una identidad autorizada. Los documentos históricos no reciben un hash
+automáticamente; vuelve a ejecutar `seed_data.py` para escribir el hash de
+origen en documentos cargados por ese proceso.

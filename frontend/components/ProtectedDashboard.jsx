@@ -9,6 +9,7 @@ import AdminSidebar from "./AdminSidebar.jsx";
 import AdminUserManagement from "./AdminUserManagement.jsx";
 import BranchMultiSelect from "./BranchMultiSelect.jsx";
 import ChatPanel from "./ChatPanel.jsx";
+import InvoiceWorkspace from "./InvoiceWorkspace.jsx";
 import { isSupportedRole, OPERATIONAL_ROLES, ROLE_PROFILES } from "../lib/authRoles.js";
 import { clearSession, readSession, saveSession } from "../lib/authSession.js";
 import { BRANCH_OPTIONS, formatBranchNames } from "../lib/branches.js";
@@ -403,7 +404,7 @@ function DirectorPanel({ branches }) {
   );
 }
 
-function AnalystPanel() {
+function AnalystPanel({ token, branches, onUnauthorized }) {
   return (
     <section className="role-dashboard role-dashboard-analista" aria-labelledby="analyst-workspace-title">
       <RoleHero
@@ -418,6 +419,11 @@ function AnalystPanel() {
         <RoleActionCard eyebrow="02 · Validación" title="Revisar hallazgos" description="Pide al asistente señalar campos ausentes o información que requiera confirmación humana." index={1} />
         <RoleActionCard eyebrow="03 · Trazabilidad" title="Consultar fuentes" description="Las respuestas pueden incluir referencias para contrastar la información con el documento original." index={2} />
       </div>
+      <InvoiceWorkspace
+        token={token}
+        branches={branches}
+        onUnauthorized={onUnauthorized}
+      />
       <div className="role-guidance-card">
         <span className="role-guidance-icon" aria-hidden="true">✓</span>
         <div>
@@ -546,10 +552,10 @@ export default function ProtectedDashboard() {
     router.replace("/login");
   }
 
-  function returnToLogin() {
+  const returnToLogin = useCallback(() => {
     clearSession();
     router.replace("/login");
-  }
+  }, [router]);
 
   if (isLoading) {
     return (
@@ -651,6 +657,26 @@ export default function ProtectedDashboard() {
                 <AdminUserManagement
                   token={token}
                   onUnauthorized={returnToLogin}
+                />
+              </motion.section>
+              <motion.section
+                className={`admin-space-page ${activeAdminSpace === "reviews" ? "is-active" : ""}`}
+                id="admin-space-reviews"
+                aria-label="Revisión de facturas"
+                aria-hidden={activeAdminSpace !== "reviews"}
+                inert={activeAdminSpace !== "reviews"}
+                initial={false}
+                animate={{
+                  opacity: activeAdminSpace === "reviews" ? 1 : 0,
+                  x: activeAdminSpace === "reviews" ? 0 : -12,
+                }}
+                transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <InvoiceWorkspace
+                  token={token}
+                  branches={user.branches || []}
+                  onUnauthorized={returnToLogin}
+                  allowUpload={false}
                 />
               </motion.section>
               <motion.section
@@ -817,7 +843,11 @@ export default function ProtectedDashboard() {
               ) : user.role === "bodega" ? (
                 <InventoryPanel token={token} branches={user.branches || []} />
               ) : user.role === "analista" ? (
-                <AnalystPanel />
+                <AnalystPanel
+                  token={token}
+                  branches={user.branches || []}
+                  onUnauthorized={returnToLogin}
+                />
               ) : user.role === "gerente" ? (
                 <ManagerPanel />
               ) : (

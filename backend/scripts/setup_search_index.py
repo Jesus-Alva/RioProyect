@@ -32,6 +32,13 @@ def build_index(index_name: str, synonym_map_name: str) -> SearchIndex:
             retrievable=True,
         ),
         SearchField(
+            name="document_hash",
+            type=SearchFieldDataType.String,
+            searchable=False,
+            filterable=True,
+            retrievable=True,
+        ),
+        SearchField(
             name="vendor_name",
             type=SearchFieldDataType.String,
             searchable=True,

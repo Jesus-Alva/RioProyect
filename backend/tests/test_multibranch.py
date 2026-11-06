@@ -165,6 +165,11 @@ class MultiBranchDataTests(unittest.TestCase):
                     content=SimpleNamespace(amount=10.5),
                     value_currency=None,
                 ),
+                "InvoiceDate": SimpleNamespace(
+                    confidence=0.95,
+                    content="2026-11-06",
+                    value_currency=None,
+                ),
             }
         )
         indexed, reasons = seed_data.invoice_to_search_document(
@@ -179,6 +184,11 @@ class MultiBranchDataTests(unittest.TestCase):
         self.assertEqual(reasons, [])
         self.assertEqual(indexed["branch"], "queretaro")
         self.assertEqual(indexed["security_id"], ["analista"])
+        self.assertEqual(indexed["document_hash"], "hash")
+        self.assertEqual(
+            indexed["document_filename"],
+            "FACTURA_queretaro_20261106_proveedor_hash.pdf",
+        )
 
     def test_seed_script_uploads_invoice_with_manifest_branch_using_azure_mocks(self):
         from types import SimpleNamespace
@@ -281,6 +291,7 @@ class MultiBranchDataTests(unittest.TestCase):
         invoice_fields = {field.name: field for field in invoice_index.fields}
         inventory_fields = {field.name: field for field in inventory_index.fields}
         self.assertTrue(invoice_fields["branch"].filterable)
+        self.assertTrue(invoice_fields["document_hash"].filterable)
         self.assertTrue(inventory_fields["branch"].filterable)
         self.assertIn("producto", inventory_fields)
         self.assertIn("cantidad", inventory_fields)

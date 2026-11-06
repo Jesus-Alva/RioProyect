@@ -893,6 +893,176 @@ select:focus-visible {
   gap: 0.8rem;
 }
 
+.invoice-workspace {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgb(213 228 224 / 86%);
+  border-radius: 1rem;
+  background: linear-gradient(145deg, rgb(255 255 255 / 96%), rgb(245 250 249 / 88%));
+  box-shadow: 0 0.65rem 1.6rem rgb(24 62 70 / 5%);
+}
+
+.invoice-workspace-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.invoice-workspace-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.invoice-workspace-heading p:not(.role-action-eyebrow) {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.invoice-upload-form {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: rgb(255 255 255 / 78%);
+}
+
+.invoice-upload-form label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.invoice-upload-form input[type="file"] {
+  width: 100%;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: #fff;
+  color: var(--muted);
+}
+
+.invoice-file-name,
+.invoice-upload-status,
+.invoice-review-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.invoice-upload-status {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: #f8fbfa;
+}
+
+.invoice-upload-status.is-success {
+  border-color: #b6d6d1;
+  background: #eaf5f3;
+  color: #234e49;
+}
+
+.invoice-upload-status.is-review {
+  border-color: #ead2a9;
+  background: #fff8eb;
+  color: #79430c;
+}
+
+.invoice-upload-status.is-error {
+  border-color: #efc3bf;
+  background: #fff4f2;
+  color: #812c26;
+}
+
+.invoice-review-list {
+  display: grid;
+  gap: 0.65rem;
+  max-height: 26rem;
+  margin: 0;
+  padding: 0 0.2rem 0 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.invoice-review-card {
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: #fff;
+}
+
+.invoice-review-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.invoice-review-title strong {
+  overflow-wrap: anywhere;
+}
+
+.invoice-review-title span {
+  flex: 0 0 auto;
+  color: var(--brand-dark);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.invoice-original-name {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+}
+
+.invoice-review-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0.75rem 0 0;
+}
+
+.invoice-review-card dl div {
+  min-width: 0;
+}
+
+.invoice-review-card dt {
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.invoice-review-card dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 0.75rem;
+}
+
+.invoice-review-reasons {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+  color: #79430c;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
 .role-guidance-icon {
   display: grid;
   width: 2.2rem;
@@ -2231,6 +2401,18 @@ select:focus-visible {
 }
 
 @media (max-width: 640px) {
+  .invoice-workspace-heading {
+    flex-direction: column;
+  }
+
+  .invoice-review-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .invoice-review-title {
+    flex-direction: column;
+  }
+
   .admin-user-summary {
     gap: 0.4rem;
   }

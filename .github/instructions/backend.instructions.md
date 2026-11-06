@@ -42,3 +42,10 @@ applyTo: 'backend/**/*.py'
 - En `setup_search_index.py`, agrega el campo `branch` (String, filterable).
 - En `seed_data.py`, el manifiesto `invoice-access.json` debe incluir la sucursal escalar del documento (ej. `"factura_001.pdf": {"roles": ["analista"], "branch": "leon"}`).
 - Para el inventario, el agente de Bodega debe consultar un índice de inventario (`inventario-index`) donde los documentos tengan los campos `producto`, `cantidad`, `branch`.
+
+## Carga y Validación de Facturas (Panel de Analista)
+- Crea un endpoint `POST /api/invoices/upload` en FastAPI que reciba un archivo (PDF/Imagen) y valide que el usuario tenga el rol `analista`.
+- Usa `DocumentIntelligenceClient` (modelo `prebuilt-invoice`) para extraer proveedor, fecha y total.
+- **Control de Duplicados**: Antes de guardar en AI Search, busca en el índice si ya existe una factura con el mismo `vendor_name`, `invoice_date` e `invoice_total`. Si existe, devuelve un error 409 (Conflict) indicando "Factura duplicada".
+- Si no es duplicada y la confianza es > 0.8, guárdala en Blob Storage (opcional) y súbela a AI Search con su `security_id` y `branch`.
+- Si la confianza es < 0.8, devuélvela a una lista de "Revisión Manual" en el frontend sin indexarla.

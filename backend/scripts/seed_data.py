@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 from backend.app.branches import BRANCHES
+from backend.app.invoice_naming import generate_invoice_filename
 from backend.app.roles import OPERATIONAL_ROLES
 
 load_dotenv()
@@ -213,10 +214,19 @@ def invoice_to_search_document(
         return None, [f"InvoiceTotal: valor inválido ({error})"]
 
     invoice_date = invoice_date_value(invoice_date)
+    generated_filename = generate_invoice_filename(
+        filename,
+        branch,
+        invoice_date,
+        vendor_name,
+        field_confidence(fields, "VendorName"),
+        content_hash,
+        document_number,
+    )
     searchable_content = "\n".join(
         part
         for part in (
-            f"Factura: {filename}. Facturas.",
+            f"Factura: {generated_filename}. Facturas.",
             f"Proveedor: {vendor_name}.",
             f"Fecha: {invoice_date}." if invoice_date else "",
             f"Total: {normalized_total}.",
@@ -228,7 +238,8 @@ def invoice_to_search_document(
     return (
         {
             "id": make_document_id(content_hash, document_number),
-            "document_filename": filename,
+            "document_filename": generated_filename,
+            "document_hash": content_hash,
             "vendor_name": str(vendor_name),
             "invoice_content": searchable_content,
             "invoice_total": normalized_total,

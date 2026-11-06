@@ -7,5 +7,7 @@ passlib[bcrypt]>=1.7.4,<2
 bcrypt>=4,<4.1
 PyJWT>=2.8,<3
 python-dotenv>=1,<2
+python-multipart>=0.0.9,<1
+azure-storage-blob>=12.20,<13
 SQLAlchemy>=2,<3
 uvicorn[standard]>=0.30,<1

@@ -37,3 +37,9 @@ applyTo: 'frontend/**/*.{js,jsx,css}'
 - Cada respuesta y documento debe mantener visible su sucursal; al cambiar la selección del chat, inicia una conversación independiente.
 - En el Dashboard del **Directivo**, muestra un selector o gráfico con las 5 sucursales.
 - En el Dashboard de **Bodega**, clasifica cada elemento de inventario por su campo `branch`.
+
+## Subida de Facturas (Dashboard Analista)
+- En el panel de Laura (Analista), agrega un componente de "Subir Factura" (input type="file").
+- Al subir el archivo, envíalo a `/api/invoices/upload` con el token JWT.
+- Muestra estados visuales: "Procesando...", "Factura guardada con éxito", "Factura duplicada" o "Requiere revisión manual".
+- Tras una carga exitosa, actualiza la lista de facturas del panel.

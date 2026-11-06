@@ -7,9 +7,11 @@ from functools import lru_cache
 from typing import Any, Literal
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy.orm import Session
 
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
@@ -17,7 +19,14 @@ from azure.search.documents import SearchClient
 
 from backend.app.auth import authenticate_user, router as auth_router
 from backend.app.branches import normalize_branches
-from backend.app.database import initialize_database
+from backend.app.database import get_db, initialize_database
+from backend.app.invoice_upload import (
+    MAX_UPLOAD_BYTES,
+    list_invoice_reviews,
+    process_invoice_upload,
+    sanitize_filename,
+    validate_file_content,
+)
 from backend.app.roles import AGENT_NAMES, ADMIN_ROLE, OPERATIONAL_ROLES
 from backend.app.security import validate_jwt_configuration
 
@@ -101,6 +110,61 @@ def build_branch_filter(role: str, branches: list[str]) -> str:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/invoices/upload")
+def upload_invoice(
+    file: UploadFile = File(...),
+    branch: Branch = Form(...),
+    user: dict[str, Any] = Depends(authenticate_user),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    if user["role"] != "analista":
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Analista puede cargar facturas.",
+        )
+    if branch not in user["branches"]:
+        raise HTTPException(
+            status_code=403,
+            detail="La sucursal no está asignada a tu cuenta.",
+        )
+
+    filename = sanitize_filename(file.filename)
+    content = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="El archivo no puede superar 20 MB.",
+        )
+    if not content:
+        raise HTTPException(
+            status_code=422,
+            detail="El archivo está vacío.",
+        )
+    content_type = validate_file_content(filename, content)
+    status_code, payload = process_invoice_upload(
+        content=content,
+        filename=filename,
+        content_type=content_type,
+        branch=branch,
+        user_id=user["id"],
+        db=db,
+    )
+    return JSONResponse(status_code=status_code, content=payload)
+
+
+@app.get("/api/invoices/reviews")
+def invoice_reviews(
+    user: dict[str, Any] = Depends(authenticate_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if user["role"] not in {"analista", ADMIN_ROLE}:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Analista o administrador puede consultar revisiones.",
+        )
+    return {"items": list_invoice_reviews(user, db)}
 
 
 @app.get("/api/inventory")

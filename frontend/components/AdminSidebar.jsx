@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 const NAV_ITEMS = [
   { id: "users", panelId: "admin-space-users", label: "Usuarios y permisos", icon: "users" },
+  { id: "reviews", panelId: "admin-space-reviews", label: "Revisión de facturas", icon: "reviews" },
   { id: "agents", panelId: "admin-space-agents", label: "Agentes operativos", icon: "agents" },
 ];
 
@@ -124,6 +125,11 @@ function AdminNavIcon({ kind }) {
           <circle cx="9" cy="8" r="3" />
           <path d="M3.5 19v-1.5A4.5 4.5 0 0 1 8 13h2a4.5 4.5 0 0 1 4.5 4.5V19" />
           <path d="M16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3 3 0 0 1 3 3V19" />
+        </>
+      ) : kind === "reviews" ? (
+        <>
+          <path d="M7 3.75h7l4 4V20a1 1 0 0 1-1 1H7a2 2 0 0 1-2-2V5.75a2 2 0 0 1 2-2Z" />
+          <path d="M14 4v4h4M8 12h7M8 16h7" />
         </>
       ) : (
         <>

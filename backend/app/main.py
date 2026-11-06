@@ -5,11 +5,12 @@ import logging
 import os
 from functools import lru_cache
 from typing import Any, Literal
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
@@ -22,6 +23,8 @@ from backend.app.branches import normalize_branches
 from backend.app.database import get_db, initialize_database
 from backend.app.invoice_upload import (
     MAX_UPLOAD_BYTES,
+    decide_invoice_review,
+    get_invoice_review_preview,
     list_invoice_reviews,
     process_invoice_upload,
     sanitize_filename,
@@ -165,6 +168,57 @@ def invoice_reviews(
             detail="Solo Analista o administrador puede consultar revisiones.",
         )
     return {"items": list_invoice_reviews(user, db)}
+
+
+class InvoiceReviewDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approve", "decline"]
+
+
+@app.get("/api/invoices/reviews/{review_id}/preview")
+def invoice_review_preview(
+    review_id: int,
+    user: dict[str, Any] = Depends(authenticate_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if user["role"] not in {"analista", ADMIN_ROLE}:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Analista o administrador puede consultar revisiones.",
+        )
+    content, content_type, filename = get_invoice_review_preview(
+        review_id, user, db
+    )
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@app.patch("/api/invoices/reviews/{review_id}")
+def resolve_invoice_review(
+    review_id: int,
+    payload: InvoiceReviewDecision,
+    user: dict[str, Any] = Depends(authenticate_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if user["role"] not in {"analista", ADMIN_ROLE}:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Analista o administrador puede resolver revisiones.",
+        )
+    return decide_invoice_review(
+        review_id=review_id,
+        decision=payload.decision,
+        user=user,
+        db=db,
+    )
 
 
 @app.get("/api/inventory")

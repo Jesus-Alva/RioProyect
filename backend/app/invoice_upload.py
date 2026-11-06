@@ -7,10 +7,11 @@ import math
 import os
 import re
 import unicodedata
+from datetime import datetime, timezone
 from typing import Any
 
 from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.core.exceptions import AzureError, ResourceExistsError
+from azure.core.exceptions import AzureError, ResourceExistsError, ResourceNotFoundError
 from azure.identity import DefaultAzureCredential
 from azure.search.documents import SearchClient
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -557,3 +558,160 @@ def list_invoice_reviews(user: dict[str, Any], db: Session) -> list[dict[str, An
         }
         for upload in uploads
     ]
+
+
+def _review_upload_for_user(
+    review_id: int, user: dict[str, Any], db: Session
+) -> InvoiceUpload:
+    upload = db.scalar(
+        select(InvoiceUpload).where(
+            InvoiceUpload.id == review_id,
+            InvoiceUpload.status == "needs_review",
+        )
+    )
+    if upload is None:
+        raise HTTPException(status_code=404, detail="No existe una revisión pendiente.")
+    if user["role"] != "admin" and upload.branch not in user["branches"]:
+        raise HTTPException(status_code=404, detail="No existe una revisión pendiente.")
+    return upload
+
+
+def _review_blob_client(upload: InvoiceUpload) -> tuple[Any, Any, Any]:
+    blob_endpoint = os.getenv("AZURE_STORAGE_BLOB_URL")
+    if not blob_endpoint or not upload.blob_name:
+        raise HTTPException(
+            status_code=409,
+            detail="El archivo original no está disponible en Blob Storage.",
+        )
+
+    credential = DefaultAzureCredential()
+    blob_service = BlobServiceClient(
+        account_url=blob_endpoint,
+        credential=credential,
+    )
+    container_name = (
+        os.getenv("AZURE_STORAGE_CONTAINER_NAME") or DEFAULT_CONTAINER_NAME
+    )
+    blob = blob_service.get_container_client(container_name).get_blob_client(
+        upload.blob_name
+    )
+    return credential, blob_service, blob
+
+
+def _verify_review_blob(upload: InvoiceUpload) -> None:
+    credential, blob_service, blob = _review_blob_client(upload)
+    try:
+        properties = blob.get_blob_properties()
+        metadata = properties.metadata or {}
+        if metadata.get("sha256") != upload.document_hash:
+            raise HTTPException(
+                status_code=409,
+                detail="El archivo en Blob Storage no coincide con la factura revisada.",
+            )
+    except ResourceNotFoundError:
+        raise HTTPException(
+            status_code=409,
+            detail="El archivo original ya no está disponible en Blob Storage.",
+        ) from None
+    except AzureError as error:
+        logger.error(
+            "Could not verify invoice review blob: exception=%s status_code=%s error_code=%s",
+            type(error).__name__,
+            getattr(error, "status_code", None),
+            getattr(error, "error_code", None),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible verificar el archivo original en Blob Storage.",
+        ) from None
+    finally:
+        blob_service.close()
+        credential.close()
+
+
+def get_invoice_review_preview(
+    review_id: int, user: dict[str, Any], db: Session
+) -> tuple[bytes, str, str]:
+    upload = _review_upload_for_user(review_id, user, db)
+    credential, blob_service, blob = _review_blob_client(upload)
+    try:
+        properties = blob.get_blob_properties()
+        metadata = properties.metadata or {}
+        if metadata.get("sha256") != upload.document_hash:
+            raise HTTPException(
+                status_code=409,
+                detail="El archivo en Blob Storage no coincide con la factura revisada.",
+            )
+        if properties.size > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="El archivo excede el límite permitido para vista previa.",
+            )
+        content = blob.download_blob().readall()
+    except ResourceNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="El archivo original no está disponible en Blob Storage.",
+        ) from None
+    except AzureError as error:
+        logger.error(
+            "Could not load invoice review preview: exception=%s status_code=%s error_code=%s",
+            type(error).__name__,
+            getattr(error, "status_code", None),
+            getattr(error, "error_code", None),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible cargar la vista previa de la factura.",
+        ) from None
+    finally:
+        blob_service.close()
+        credential.close()
+    return (
+        content,
+        upload.content_type,
+        upload.generated_filename or upload.original_filename,
+    )
+
+
+def decide_invoice_review(
+    review_id: int,
+    decision: str,
+    user: dict[str, Any],
+    db: Session,
+) -> dict[str, Any]:
+    upload = _review_upload_for_user(review_id, user, db)
+    if decision == "approve":
+        _verify_review_blob(upload)
+        next_status = "approved"
+        detail = "Factura aprobada; el original está disponible en Blob Storage."
+    else:
+        next_status = "declined"
+        detail = "Factura declinada."
+
+    result = db.execute(
+        update(InvoiceUpload)
+        .where(
+            InvoiceUpload.id == review_id,
+            InvoiceUpload.status == "needs_review",
+        )
+        .values(
+            status=next_status,
+            reviewed_by=user["id"],
+            reviewed_at=datetime.now(timezone.utc),
+        )
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="La factura ya fue resuelta por otro usuario.",
+        )
+    db.commit()
+    return {
+        "id": upload.id,
+        "status": next_status,
+        "branch": upload.branch,
+        "filename": upload.generated_filename or upload.original_filename,
+        "detail": detail,
+    }

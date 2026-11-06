@@ -89,6 +89,10 @@ class InvoiceUpload(Base):
     vendor_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     total_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     review_reasons: Mapped[str] = mapped_column(Text, default="[]")
+    reviewed_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     blob_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -153,6 +157,17 @@ def initialize_database() -> None:
                 text(
                     "ALTER TABLE invoice_uploads "
                     "ADD COLUMN generated_filename VARCHAR(255)"
+                )
+            )
+        if "reviewed_by" not in invoice_columns:
+            connection.execute(
+                text("ALTER TABLE invoice_uploads ADD COLUMN reviewed_by INTEGER")
+            )
+        if "reviewed_at" not in invoice_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE invoice_uploads "
+                    "ADD COLUMN reviewed_at DATETIME"
                 )
             )
 

@@ -239,8 +239,17 @@ del mismo archivo.
 
 El endpoint `GET /api/invoices/reviews` permite consultar la bandeja al rol
 Analista (solo sus sucursales asignadas) y al administrador (todas las
-sucursales). Antes de habilitar cargas, actualiza el índice remoto para agregar
-el campo filtrable `document_hash`:
+sucursales). `GET /api/invoices/reviews/{id}/preview` entrega el original
+privado para vista previa con el mismo control de rol y sucursal. El endpoint
+`PATCH /api/invoices/reviews/{id}` acepta `{"decision":"approve"}` o
+`{"decision":"decline"}` y registra quién y cuándo resolvió el caso. La interfaz
+requiere abrir la vista previa antes de habilitar la aprobación. Los originales
+se guardan en Blob Storage al procesar la carga para que puedan revisarse; al
+aprobar, el backend verifica que el blob exista y su SHA-256 coincida antes de
+cambiar el estado a `approved`. Declinarlas no elimina el original.
+
+Antes de habilitar cargas, actualiza el índice remoto para agregar el campo
+filtrable `document_hash`:
 
 ```powershell
 .\venv\Scripts\python.exe backend\scripts\setup_search_index.py

@@ -117,6 +117,36 @@ class InvoiceUploadTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()["access_token"]
 
+    def create_review(
+        self,
+        branch="guadalajara",
+        blob_name="invoices/test.pdf",
+        uploaded_by=None,
+    ):
+        if uploaded_by is None:
+            with Session(get_engine(str(get_database_path()))) as session:
+                user = session.scalar(
+                    select(User).where(User.email == "analista@example.com")
+                )
+            uploaded_by = (
+                user.id if user else self.create_user(branches=(branch,))
+            )
+        with Session(get_engine(str(get_database_path()))) as session:
+            upload = InvoiceUpload(
+                document_hash="c" * 64,
+                original_filename="test.pdf",
+                generated_filename=f"FACTURA_{branch}_test.pdf",
+                content_type="application/pdf",
+                branch=branch,
+                status="needs_review",
+                uploaded_by=uploaded_by,
+                review_reasons='["Requiere revisión"]',
+                blob_name=blob_name,
+            )
+            session.add(upload)
+            session.commit()
+            return upload.id
+
     def azure_mocks(self, document, exact_matches=(), probable_matches=()):
         credential = SimpleNamespace(close=Mock())
         document_client = Mock()
@@ -465,6 +495,163 @@ class InvoiceUploadTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_approval_verifies_blob_hash_and_records_reviewer(self):
+        token = self.token_for()
+        review_id = self.create_review()
+        credential = SimpleNamespace(close=Mock())
+        blob_service = Mock()
+        blob = blob_service.get_container_client.return_value.get_blob_client.return_value
+        blob.get_blob_properties.return_value = SimpleNamespace(
+            metadata={"sha256": "c" * 64}
+        )
+
+        with (
+            patch(
+                "backend.app.invoice_upload.DefaultAzureCredential",
+                return_value=credential,
+            ),
+            patch(
+                "backend.app.invoice_upload.BlobServiceClient",
+                return_value=blob_service,
+            ),
+        ):
+            response = self.client.patch(
+                f"/api/invoices/reviews/{review_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"decision": "approve"},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "approved")
+        self.assertIn("Blob Storage", response.json()["detail"])
+        blob_service.get_container_client.assert_called_once_with("facturas-raw")
+        blob.get_blob_properties.assert_called_once_with()
+        blob_service.close.assert_called_once_with()
+        credential.close.assert_called_once_with()
+        with Session(get_engine(str(get_database_path()))) as session:
+            upload = session.get(InvoiceUpload, review_id)
+            self.assertEqual(upload.status, "approved")
+            self.assertEqual(upload.reviewed_by, 1)
+            self.assertIsNotNone(upload.reviewed_at)
+
+    def test_approval_is_rejected_if_blob_missing_or_hash_does_not_match(self):
+        token = self.token_for()
+        review_id = self.create_review()
+        credential = SimpleNamespace(close=Mock())
+        blob_service = Mock()
+        blob = blob_service.get_container_client.return_value.get_blob_client.return_value
+        blob.get_blob_properties.return_value = SimpleNamespace(
+            metadata={"sha256": "d" * 64}
+        )
+
+        with (
+            patch(
+                "backend.app.invoice_upload.DefaultAzureCredential",
+                return_value=credential,
+            ),
+            patch(
+                "backend.app.invoice_upload.BlobServiceClient",
+                return_value=blob_service,
+            ),
+        ):
+            response = self.client.patch(
+                f"/api/invoices/reviews/{review_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"decision": "approve"},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        with Session(get_engine(str(get_database_path()))) as session:
+            self.assertEqual(
+                session.get(InvoiceUpload, review_id).status,
+                "needs_review",
+            )
+
+    def test_decline_records_reviewer_without_accessing_blob_storage(self):
+        token = self.token_for()
+        review_id = self.create_review()
+
+        with (
+            patch("backend.app.invoice_upload.DefaultAzureCredential") as credential,
+            patch("backend.app.invoice_upload.BlobServiceClient") as blob_service,
+        ):
+            response = self.client.patch(
+                f"/api/invoices/reviews/{review_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"decision": "decline"},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "declined")
+        credential.assert_not_called()
+        blob_service.assert_not_called()
+        with Session(get_engine(str(get_database_path()))) as session:
+            upload = session.get(InvoiceUpload, review_id)
+            self.assertEqual(upload.status, "declined")
+            self.assertEqual(upload.reviewed_by, 1)
+            self.assertIsNotNone(upload.reviewed_at)
+
+    def test_preview_streams_only_the_authorized_pending_invoice(self):
+        token = self.token_for()
+        review_id = self.create_review()
+        credential = SimpleNamespace(close=Mock())
+        blob_service = Mock()
+        blob = blob_service.get_container_client.return_value.get_blob_client.return_value
+        blob.get_blob_properties.return_value = SimpleNamespace(
+            metadata={"sha256": "c" * 64},
+            size=11,
+        )
+        blob.download_blob.return_value.readall.return_value = b"%PDF-1.7\n"
+
+        with (
+            patch(
+                "backend.app.invoice_upload.DefaultAzureCredential",
+                return_value=credential,
+            ),
+            patch(
+                "backend.app.invoice_upload.BlobServiceClient",
+                return_value=blob_service,
+            ),
+        ):
+            response = self.client.get(
+                f"/api/invoices/reviews/{review_id}/preview",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.content, b"%PDF-1.7\n")
+        self.assertEqual(response.headers["content-type"], "application/pdf")
+        self.assertIn("inline;", response.headers["content-disposition"])
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        blob.download_blob.assert_called_once_with()
+
+    def test_review_decisions_require_analyst_or_admin_and_assigned_branch(self):
+        analyst_token = self.token_for(role="analista", branches=("zapopan",))
+        manager_token = self.token_for(role="gerente")
+        with Session(get_engine(str(get_database_path()))) as session:
+            analyst_id = session.scalar(
+                select(User.id).where(User.email == "analista@example.com")
+            )
+        review_id = self.create_review(uploaded_by=analyst_id)
+        forbidden_role = self.client.patch(
+            f"/api/invoices/reviews/{review_id}",
+            headers={"Authorization": f"Bearer {manager_token}"},
+            json={"decision": "decline"},
+        )
+        self.assertEqual(forbidden_role.status_code, 403)
+
+        unassigned_branch = self.client.patch(
+            f"/api/invoices/reviews/{review_id}",
+            headers={"Authorization": f"Bearer {analyst_token}"},
+            json={"decision": "decline"},
+        )
+        self.assertEqual(unassigned_branch.status_code, 404)
+        with Session(get_engine(str(get_database_path()))) as session:
+            self.assertEqual(
+                session.get(InvoiceUpload, review_id).status,
+                "needs_review",
+            )
+
     def test_generated_invoice_filename_sanitizes_supplier_and_keeps_source_extension(self):
         filename = generate_invoice_filename(
             "my-invoice.JPEG",
@@ -542,6 +729,8 @@ class InvoiceUploadTests(unittest.TestCase):
                 for column in inspect(connection).get_columns("invoice_uploads")
             }
         self.assertIn("generated_filename", columns)
+        self.assertIn("reviewed_by", columns)
+        self.assertIn("reviewed_at", columns)
         migration_engine.dispose()
 
     def test_analyst_reviews_are_branch_scoped_and_admin_sees_all(self):

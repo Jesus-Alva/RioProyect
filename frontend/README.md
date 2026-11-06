@@ -9,6 +9,7 @@ Interfaz de chat con Next.js 15, React y Tailwind CSS.
 3. Inicia el servidor con `npm run dev`.
 4. Ejecuta las pruebas con `npm test` y genera la compilación con `npm run build`.
 
-El backend debe permitir el origen del frontend en `CORS_ORIGINS`. El modo
-desarrollo del backend permite probar los cinco perfiles sin iniciar sesión;
-en un entorno protegido, el backend requiere un token de Entra ID.
+El backend debe permitir el origen del frontend en `CORS_ORIGINS`. El registro
+crea una solicitud pendiente; el administrador asigna un rol operativo desde
+su panel. El JWT de sesión se guarda en `localStorage` y se envía en el header
+`Authorization` a los endpoints protegidos.

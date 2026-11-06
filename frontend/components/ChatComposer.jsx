@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 export default function ChatComposer({
   role,
+  inputId = "chat-message",
   largeVoiceButton = false,
   value,
   onChange,
@@ -76,11 +77,11 @@ export default function ChatComposer({
       className={`composer ${largeVoiceButton ? "composer-bodega" : ""}`}
       onSubmit={onSubmit}
     >
-      <label className="sr-only" htmlFor="chat-message">
+      <label className="sr-only" htmlFor={inputId}>
         Escribe tu consulta
       </label>
       <textarea
-        id="chat-message"
+        id={inputId}
         name="message"
         value={value}
         onChange={(event) => onChange(event.target.value)}

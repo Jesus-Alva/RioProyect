@@ -1,22 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { InteractionRequiredAuthError } from "@azure/msal-browser";
-import { useMsal } from "@azure/msal-react";
+import { useReducedMotion } from "motion/react";
 
 import ChatComposer from "./ChatComposer.jsx";
 import ChatMessage from "./ChatMessage.jsx";
-import { apiScope } from "../lib/msalConfig.js";
+import { ROLE_PROFILES } from "../lib/authRoles.js";
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 function getErrorMessage(status) {
   if (status === 401) {
-    return "La sesión o el token de acceso no son válidos. Inicia sesión de nuevo.";
+    return "Tu sesión venció o no es válida. Inicia sesión de nuevo.";
   }
   if (status === 403) {
-    return "Tu cuenta no tiene exactamente un rol de aplicación autorizado. Solicita la corrección al administrador.";
+    return "Tu cuenta no tiene permiso para consultar este agente.";
   }
   if (status === 422) {
     return "Revisa que tu mensaje tenga entre 1 y 2000 caracteres.";
@@ -27,42 +26,23 @@ function getErrorMessage(status) {
   return "No se pudo procesar la solicitud. Inténtalo de nuevo.";
 }
 
-export default function ChatPanel({ role, account }) {
-  const { instance } = useMsal();
+export default function ChatPanel({ user, token, agentRole, isActive = true }) {
+  const reduceMotion = useReducedMotion();
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
   const [conversationId, setConversationId] = useState(null);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
   const endOfMessagesRef = useRef(null);
+  const inputId = `chat-message-${agentRole}`;
+  const isWarehouse = agentRole === "bodega";
 
   useEffect(() => {
-    endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending]);
-
-  async function getAccessToken() {
-    if (!apiScope) {
-      throw new Error(
-        "Falta configurar el scope de acceso de la API de Río Claro.",
-      );
-    }
-    try {
-      const result = await instance.acquireTokenSilent({
-        scopes: [apiScope],
-        account,
-      });
-      return result.accessToken;
-    } catch (tokenError) {
-      if (!(tokenError instanceof InteractionRequiredAuthError)) {
-        throw tokenError;
-      }
-      const result = await instance.acquireTokenPopup({
-        scopes: [apiScope],
-        account,
-      });
-      return result.accessToken;
-    }
-  }
+    if (!isActive || (messages.length === 0 && !isSending)) return;
+    endOfMessagesRef.current?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+  }, [isActive, messages, isSending, reduceMotion]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -80,19 +60,21 @@ export default function ChatPanel({ role, account }) {
     setIsSending(true);
 
     try {
-      const accessToken = await getAccessToken();
+      const body = {
+        message: content,
+        conversation_id: conversationId,
+      };
+      if (user.role === "admin") body.agent_role = agentRole;
+
       const response = await fetch(
         `${BACKEND_URL.replace(/\/$/, "")}/api/chat`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
+            Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            message: content,
-            conversation_id: conversationId,
-          }),
+          body: JSON.stringify(body),
         },
       );
 
@@ -103,7 +85,14 @@ export default function ChatPanel({ role, account }) {
         throw new Error("El backend devolvió una respuesta que no se pudo leer.");
       }
       if (!response.ok) {
-        throw new Error(getErrorMessage(response.status));
+        if (response.status === 401) {
+          throw new Error(getErrorMessage(response.status));
+        }
+        throw new Error(
+          typeof payload.detail === "string"
+            ? payload.detail
+            : getErrorMessage(response.status),
+        );
       }
       if (
         typeof payload.response !== "string" ||
@@ -129,8 +118,7 @@ export default function ChatPanel({ role, account }) {
       setError(
         requestError instanceof TypeError
           ? "No se pudo conectar con el servidor. Verifica que el backend esté disponible."
-          : requestError.message ||
-            "No se pudo obtener un token de acceso. Inicia sesión de nuevo.",
+          : requestError.message,
       );
     } finally {
       setIsSending(false);
@@ -138,13 +126,18 @@ export default function ChatPanel({ role, account }) {
   }
 
   return (
-    <section className="chat-panel" aria-labelledby="chat-title">
+    <section
+      className={`chat-panel ${user.role === "admin" ? "admin-agent-panel" : ""}`}
+      aria-labelledby={`chat-title-${agentRole}`}
+    >
       <header className="chat-header">
-        <h2 className="chat-title" id="chat-title">
-          Asistente Río Claro
+        <h2 className="chat-title" id={`chat-title-${agentRole}`}>
+          Asistente {ROLE_PROFILES[agentRole].label}
         </h2>
         <p className="chat-subtitle">
-          Las consultas se autorizan con el rol de tu cuenta.
+          {user.role === "admin"
+            ? "Panel independiente para consultar este agente."
+            : `Tu cuenta está autorizada como ${ROLE_PROFILES[agentRole].label}.`}
         </p>
       </header>
 
@@ -153,7 +146,7 @@ export default function ChatPanel({ role, account }) {
         role="log"
         aria-live="polite"
         aria-relevant="additions text"
-        aria-label="Conversación"
+        aria-label={`Conversación con ${ROLE_PROFILES[agentRole].label}`}
       >
         {messages.length === 0 && !isSending ? (
           <p className="welcome-message">
@@ -178,8 +171,9 @@ export default function ChatPanel({ role, account }) {
           </p>
         )}
         <ChatComposer
-          role={role}
-          largeVoiceButton={role === "bodega"}
+          role={agentRole}
+          inputId={inputId}
+          largeVoiceButton={isWarehouse}
           value={message}
           onChange={setMessage}
           onSubmit={handleSubmit}

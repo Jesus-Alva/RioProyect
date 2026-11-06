@@ -7,25 +7,25 @@ applyTo: 'frontend/**/*.{js,jsx,css}'
 
 ## Arquitectura de la App
 - Usa Next.js 15 (App Router). Sin TypeScript.
-- **Protección de rutas**: Si no hay usuario en `localStorage`, el `/dashboard` redirige a `/login`.
+- Protege `/dashboard` con el JWT guardado en `localStorage` y valida la sesión consultando el backend.
 
-## Dashboard por Roles (El sistema cambia según el usuario)
-En `/dashboard`, renderiza diferentes componentes según el rol logueado:
-1. **Directivo (Ernesto)**: Muestra una tabla simulada de "Reporte de Ventas" (Guadalajara, Zapopan, León, Querétaro, Aguascalientes) y un chat para consultar tendencias.
-2. **Analista (Laura)**: Muestra un panel de "Revisión Manual" (una lista estática simulada de facturas con confianza < 0.8) y el chat para consultar facturas procesadas.
-3. **Gerente (Mariana)**: Muestra un panel de "Atención a Clientes" (simulado) y el chat para responder dudas de clientes.
-4. **Bodega (Toño)**: Muestra una interfaz simplificada, mobile-first, con un botón de micrófono gigante (Web Speech API) para dictar consultas al chat.
-5. **TI (Carlos)**: Muestra un panel de "Estado del Sistema" (luz verde de conexión a Azure) y un botón de "Pausar IA".
+## Dashboard por Roles
+- `directivo`: Reporte simulado de ventas para Guadalajara, Zapopan, León, Querétaro y Aguascalientes, con chat.
+- `analista`: Facturas de ejemplo con confianza menor a 0.8 y chat.
+- `gerente`: Panel simulado de atención a clientes y pedidos, con chat.
+- `bodega`: Interfaz mobile-first, botón grande de Web Speech API y chat.
+- `ti`: Estado de sistema ilustrativo y controles claramente identificados como demostración.
+- `admin`: Gestión de usuarios y cinco paneles de chat separados, uno por cada agente operativo.
 
-## Reglas del Chat (En todos los roles)
-- El rol ya no se elige en el chat; se lee automáticamente del `localStorage` y se envía al backend.
-- Banner fijo: *"Estás interactuando con un asistente de IA. Las respuestas se basan en documentos oficiales."*
-- Si el backend devuelve la respuesta con citas `【...】`, resáltalas.
-- Usa `whitespace-pre-wrap` para los saltos de línea.
+## Reglas del Chat
+- Envía `Authorization: Bearer <JWT>` y deja que el backend autentique y autorice la petición.
+- Solo `admin` puede seleccionar agente; los usuarios operativos consultan únicamente el suyo.
+- Nunca uses `admin` como `userFilter` de Azure AI Search.
+- Conserva el banner de transparencia, extrae y presenta citas `【...】`, y usa `whitespace-pre-wrap`.
 
-## Login Real con MSAL
-- Instala `@azure/msal-browser` y `@azure/msal-react`.
-- Configura el `MsalProvider` en `layout.jsx` usando las variables `NEXT_PUBLIC_ENTRA_CLIENT_ID`, `NEXT_PUBLIC_ENTRA_TENANT_ID` y `NEXT_PUBLIC_ENTRA_API_SCOPE`.
-- La página `/login` debe tener un botón que ejecute `instance.loginPopup()`.
-- El componente de chat debe obtener el token usando `acquireTokenSilent` e inyectarlo en la cabecera `Authorization: Bearer <token>`.
-- La vista del dashboard debe leer el rol desde el token de MSAL (usando `useMsal` y `account.idTokenClaims.roles`) para mostrar el panel del Directivo, Analista, etc.
+## Login y Registro Propio
+- Elimina todas las dependencias, providers, configuración e imports de MSAL.
+- `/login` ofrece formularios para iniciar sesión y registrarse.
+- El registro puede solicitar uno de los cinco roles operativos; la cuenta queda pendiente y únicamente `admin` asigna permisos efectivos.
+- Guarda el JWT recibido al iniciar sesión en `localStorage`; no guardes contraseñas.
+- Usa el JWT en las peticiones protegidas. Si el backend rechaza o vence la sesión, limpia el token y vuelve a `/login`.

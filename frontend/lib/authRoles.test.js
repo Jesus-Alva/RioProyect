@@ -1,29 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getRoleFromClaims } from "./authRoles.js";
+import { isSupportedRole, OPERATIONAL_ROLES } from "./authRoles.js";
 
-test("accepts exactly one supported application role", () => {
-  assert.equal(getRoleFromClaims({ roles: ["analista"] }), "analista");
+test("lists the five operational roles without granting admin through registration", () => {
+  assert.deepEqual(OPERATIONAL_ROLES, [
+    "directivo",
+    "analista",
+    "gerente",
+    "bodega",
+    "ti",
+  ]);
 });
 
-test("reports a missing role clearly", () => {
-  assert.throws(
-    () => getRoleFromClaims({ roles: [] }),
-    /no tiene un rol asignado/i,
-  );
+test("recognizes admin only as a dashboard role, not an operational agent", () => {
+  assert.equal(isSupportedRole("admin"), true);
+  assert.equal(OPERATIONAL_ROLES.includes("admin"), false);
 });
 
-test("rejects multiple roles", () => {
-  assert.throws(
-    () => getRoleFromClaims({ roles: ["analista", "gerente"] }),
-    /más de un rol/i,
-  );
-});
-
-test("rejects unsupported roles", () => {
-  assert.throws(
-    () => getRoleFromClaims({ roles: ["administrador"] }),
-    /no está autorizado/i,
-  );
+test("rejects unsupported role values", () => {
+  assert.equal(isSupportedRole("administrator"), false);
+  assert.equal(isSupportedRole(null), false);
 });

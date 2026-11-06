@@ -5,3 +5,10 @@
 # Frontend
 node_modules/
 .next/
+backend/users.db
+backend/users.db-shm
+backend/users.db-wal
+
+# Python bytecode
+__pycache__/
+*.py[cod]

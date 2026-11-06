@@ -1,25 +1,35 @@
 """API FastAPI para conversaciones seguras con agentes de Azure AI Foundry."""
 
+from contextlib import asynccontextmanager
 import os
 from functools import lru_cache
-from typing import Any
-from urllib.parse import quote
+from typing import Any, Literal
 
-import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jwt import PyJWKClient
 from pydantic import BaseModel, ConfigDict, Field
 
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
 
+from backend.app.auth import authenticate_user, router as auth_router
+from backend.app.database import initialize_database
+from backend.app.roles import AGENT_NAMES, ADMIN_ROLE, OPERATIONAL_ROLES
+from backend.app.security import validate_jwt_configuration
+
 
 load_dotenv()
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    validate_jwt_configuration()
+    initialize_database()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 cors_origins = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -29,18 +39,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
-bearer_scheme = HTTPBearer(auto_error=False)
-ALLOWED_ROLES = {"directivo", "analista", "gerente", "bodega", "ti"}
-AGENT_NAMES = {
-    "directivo": "rio-directivo",
-    "analista": "rio-analista",
-    "gerente": "rio-gerente",
-    "bodega": "rio-bodega",
-    "ti": "rio-ti",
-}
+app.include_router(auth_router)
 
 
 class ChatRequest(BaseModel):
@@ -48,6 +50,7 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=2000)
     conversation_id: str | None = None
+    agent_role: Literal["directivo", "analista", "gerente", "bodega", "ti"] | None = None
 
 
 @lru_cache(maxsize=1)
@@ -66,84 +69,6 @@ def get_openai_client() -> Any:
     return get_project_client().get_openai_client()
 
 
-@lru_cache(maxsize=8)
-def get_jwks_client(tenant_id: str) -> PyJWKClient:
-    encoded_tenant_id = quote(tenant_id, safe="")
-    jwks_url = (
-        "https://login.microsoftonline.com/"
-        f"{encoded_tenant_id}/discovery/v2.0/keys"
-    )
-    return PyJWKClient(jwks_url)
-
-
-def authenticate_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-) -> dict[str, Any]:
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise HTTPException(
-            status_code=401,
-            detail="Se requiere un token Bearer.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    tenant_id = os.getenv("ENTRA_TENANT_ID")
-    audience = os.getenv("ENTRA_CLIENT_ID")
-    if not tenant_id or not audience:
-        raise HTTPException(
-            status_code=503,
-            detail="La autenticación no está configurada.",
-        )
-
-    issuer = f"https://login.microsoftonline.com/{tenant_id}/v2.0"
-    try:
-        signing_key = get_jwks_client(tenant_id).get_signing_key_from_jwt(
-            credentials.credentials
-        )
-        claims = jwt.decode(
-            credentials.credentials,
-            signing_key.key,
-            algorithms=["RS256"],
-            audience=audience,
-            issuer=issuer,
-            options={"require": ["exp", "iss", "aud"]},
-        )
-    except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=401,
-            detail="El token de autenticación no es válido.",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from None
-    except Exception:
-        raise HTTPException(
-            status_code=503,
-            detail="No fue posible validar el token en este momento.",
-        ) from None
-
-    token_roles = claims.get("roles")
-    if not isinstance(token_roles, list) or len(token_roles) != 1:
-        raise HTTPException(
-            status_code=403,
-            detail="El token debe incluir exactamente un rol de aplicación válido.",
-        )
-
-    role = token_roles[0]
-    if not isinstance(role, str) or role not in ALLOWED_ROLES:
-        raise HTTPException(
-            status_code=403,
-            detail="El rol de aplicación del token no está autorizado.",
-        )
-
-    user_id = claims.get("oid")
-    if not isinstance(user_id, str) or not user_id:
-        raise HTTPException(
-            status_code=401,
-            detail="El token no identifica a un usuario válido.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    return {"oid": user_id, "role": role}
-
-
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -154,8 +79,28 @@ def chat(
     request: ChatRequest,
     user: dict[str, Any] = Depends(authenticate_user),
 ) -> dict[str, str]:
-    role = user["role"]
-    user_id = user["oid"]
+    if user["role"] == ADMIN_ROLE:
+        if request.agent_role is None:
+            raise HTTPException(
+                status_code=422,
+                detail="El administrador debe seleccionar un agente operativo.",
+            )
+        agent_role = request.agent_role
+    else:
+        if request.agent_role is not None and request.agent_role != user["role"]:
+            raise HTTPException(
+                status_code=403,
+                detail="No puedes consultar un agente ajeno a tu rol.",
+            )
+        agent_role = user["role"]
+
+    if agent_role not in OPERATIONAL_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="El agente solicitado no está autorizado.",
+        )
+
+    user_id = str(user["id"])
 
     try:
         openai_client = get_openai_client()
@@ -170,7 +115,7 @@ def chat(
             metadata = conversation.metadata or {}
             if (
                 metadata.get("owner") != user_id
-                or metadata.get("role") != role
+                or metadata.get("role") != agent_role
             ):
                 raise HTTPException(
                     status_code=404,
@@ -183,7 +128,7 @@ def chat(
         else:
             conversation = openai_client.conversations.create(
                 items=[user_message],
-                metadata={"owner": user_id, "role": role},
+                metadata={"owner": user_id, "role": agent_role},
             )
             conversation_id = conversation.id
 
@@ -191,10 +136,10 @@ def chat(
             conversation=conversation_id,
             extra_body={
                 "agent_reference": {
-                    "name": AGENT_NAMES[role],
+                    "name": AGENT_NAMES[agent_role],
                     "type": "agent_reference",
                 },
-                "structured_inputs": {"userFilter": role},
+                "structured_inputs": {"userFilter": agent_role},
             },
         )
     except HTTPException:

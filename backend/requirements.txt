@@ -3,6 +3,7 @@ azure-ai-projects>=2,<3
 azure-identity>=1.15,<2
 azure-search-documents>=12,<13
 fastapi>=0.115,<1
+gunicorn>=22,<24
 passlib[bcrypt]>=1.7.4,<2
 bcrypt>=4,<4.1
 PyJWT>=2.8,<3

@@ -72,6 +72,61 @@ validación de correo. En despliegues
 públicos, configura límites de solicitudes en el gateway o proxy para mitigar
 spam.
 
+## Despliegue en Azure App Service
+
+El script `deploy.ps1` publica el backend FastAPI en App Service Linux con
+Python 3.11 y el frontend Next.js con Node 22 LTS. Ambos usan un plan Linux. Antes
+de ejecutarlo, instala Azure CLI, ejecuta `az login`, completa el `.env` raíz
+con los endpoints y un `JWT_SECRET` de al menos 32 caracteres, y confirma que
+las cuentas de Storage, AI Search, Foundry y Document Intelligence ya existen.
+La identidad que ejecuta el script necesita permisos para crear App Services y
+asignar roles RBAC en los recursos indicados.
+
+Ejemplo desde PowerShell, sustituyendo los nombres por los de la suscripción:
+
+```powershell
+.\deploy.ps1 `
+  -ResourceGroup "rg-rio-claro" `
+  -Location "eastus2" `
+  -BackendAppName "rio-claro-api-unico" `
+  -FrontendAppName "rio-claro-web-unico" `
+  -StorageAccountName "rioclarostorage" `
+  -SearchServiceName "rio-claro-search" `
+  -FoundryAccountName "rio-claro-foundry" `
+  -DocumentIntelligenceAccountName "rio-claro-docintel"
+```
+
+Los cuatro parámetros `*-ResourceGroup` opcionales permiten indicar si los
+servicios de Azure existentes están en grupos distintos. El script pide una
+confirmación antes de cambiar recursos, configura App Settings desde `.env`
+(sin incluir `.env` en los paquetes), despliega los dos ZIP, habilita HTTPS y
+asigna a la identidad del backend `Storage Blob Data Contributor`, `Search
+Index Data Contributor`, `Search Service Contributor` y `Cognitive Services
+User` en Foundry y Document Intelligence. Al final valida `/health` y la página
+del frontend. Los ZIP se envían en modo asíncrono para evitar que la solicitud
+de despliegue agote el tiempo de espera mientras App Service compila; el script
+espera hasta 20 minutos por cada aplicación y compila backend y frontend de
+forma secuencial para no competir por recursos del plan. El backend se inicia
+desde `/home/site/wwwroot` y usa un worker Gunicorn, configuración adecuada al
+plan B1 y a la estructura `backend.app`.
+
+Si App Service termina la compilación pero agota el tiempo esperando el sitio,
+consulta el diagnóstico de arranque con
+`az webapp log startup show --resource-group <grupo> --name <backend>` y los
+eventos de despliegue con
+`az webapp log deployment show --resource-group <grupo> --name <backend>`.
+Las advertencias de Azure CLI sobre Python de 32 bits en Windows son locales
+al equipo que despliega; no explican por sí solas que el worker del sitio no
+arranque.
+
+La base SQLite queda en `/home/data/users.db`, dentro del almacenamiento
+persistente de App Service. Esta opción es para un piloto de una sola instancia;
+no escales horizontalmente la aplicación con SQLite compartido. Para escalar,
+migra la base de datos a un servicio administrado.
+Tras el primer despliegue, abre SSH en el App Service del backend y ejecuta
+`python backend/scripts/create_admin.py` para crear la cuenta administrativa
+inicial de forma interactiva.
+
 ## Frontend
 
 Copia `frontend\.env.example` a `frontend\.env.local`, instala dependencias y

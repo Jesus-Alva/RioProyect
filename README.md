@@ -1,5 +1,17 @@
 # Instalacion Local del Proyecto (Step to Step) 
 
+## Índice
+
+- [Levantar servicios](#levantar-servicios)
+  - [Inicializar el entorno virtual Python](#inicializar-el-entorno-virtual-python)
+  - [Backend](#backend)
+  - [Quejas y sugerencias](#quejas-y-sugerencias)
+  - [Despliegue en Azure App Service](#despliegue-en-azure-app-service)
+  - [Frontend](#frontend)
+  - [Creacion de la cuenta Admin](#creacion-de-la-cuenta-admin)
+- [Credenciales Actuales del sistema](#credenciales-actuales-del-sistema)
+- [Funcionamiento del sistema](#funcionamiento-del-sistema)
+
 # Levantar servicios
 
 ## Inicializar el entorno virtual Python

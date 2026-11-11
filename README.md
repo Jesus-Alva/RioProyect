@@ -24,7 +24,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 Configura también `CORS_ORIGINS` con el origen del frontend. La base local
 `backend\users.db` se crea automáticamente al arrancar y está excluida de Git.
 
-Instala dependencias e inicia FastAPI desde la raíz:
+Instala dependencias e inicia FastAPI desde la raíz y levanta el servicio para backend:
 
 ```bash
 .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --reload
@@ -105,10 +105,31 @@ Index Data Contributor`, `Search Service Contributor` y `Cognitive Services
 User` en Foundry y Document Intelligence. Al final valida `/health` y la página
 del frontend. Los ZIP se envían en modo asíncrono para evitar que la solicitud
 de despliegue agote el tiempo de espera mientras App Service compila; el script
-espera hasta 20 minutos por cada aplicación y compila backend y frontend de
-forma secuencial para no competir por recursos del plan. El backend se inicia
-desde `/home/site/wwwroot` y usa un worker Gunicorn, configuración adecuada al
-plan B1 y a la estructura `backend.app`.
+espera hasta 40 minutos por cada aplicación y compila backend y frontend de
+forma secuencial para no competir por recursos del plan. El ZIP del backend
+incluye `main.py` y `requirements.txt` directamente en la raíz (el script
+comprueba también las rutas requeridas antes de subirlo) y conserva el paquete
+`backend` con separadores `/` portables para Linux. El script configura
+`PYTHONPATH=/home/site/wwwroot` para permitir sus
+imports en App Service. El backend arranca con `python -m uvicorn main:app --host 0.0.0.0
+--port 8000`. El script establece `PORT=8000`, `WEBSITES_PORT=8000`,
+`SCM_DO_BUILD_DURING_DEPLOYMENT=true`, `ENABLE_ORYX_BUILD=true` y
+`WEBSITES_CONTAINER_START_TIME_LIMIT=1800` para permitir hasta 30 minutos de
+inicio del contenedor.
+
+Para redesplegar únicamente un backend existente, sin actualizar el frontend
+ni volver a configurar secretos o permisos:
+
+```powershell
+.\deploy.ps1 -BackendOnly -ResourceGroup "rg-rio-claro" -BackendAppName "rio-claro-api-unico"
+```
+
+El envío del ZIP es asíncrono. Al final el script sigue los logs del backend en
+tiempo real; pulsa Ctrl+C para terminar. Consulta también los logs de despliegue
+para confirmar que la nueva versión terminó de compilar e iniciar. Una respuesta
+de `/health` mientras se despliega podría proceder de la versión anterior.
+El registro en vivo se consulta con `az webapp log tail --name <backend>
+--resource-group <grupo>`.
 
 Si App Service termina la compilación pero agota el tiempo esperando el sitio,
 consulta el diagnóstico de arranque con

@@ -192,3 +192,16 @@ Credenciales para Bodega Sucursal Gudalajara
 Credenciales para TI
 - Correo: ti@gmail.com
 - Password: Ti@123456789
+
+# Funcionamiento del sistema
+
+La documentación describe el funcionamiento general del sistema y el flujo de
+cada módulo:
+
+- [Documentación general de Distribuidora Río Claro](Funcionamiento/0.DistribuidoraRio-Documentacion.md)
+- [Módulo de Administración](Funcionamiento/1.Modulo-Admin.md)
+- [Módulo de Analista](Funcionamiento/2.Modulo-Analista.md)
+- [Módulo de Directivo](Funcionamiento/3.Modulo-Directivo.md)
+- [Módulo de Gerente](Funcionamiento/4.Modulo-Gerente.md)
+- [Módulo de Bodega](Funcionamiento/5.Modulo.Bodega.md)
+- [Módulo de TI](Funcionamiento/6.Modulo-TI.md)
